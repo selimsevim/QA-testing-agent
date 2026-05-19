@@ -1,0 +1,21 @@
+{
+  "name": "inboxflow-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Autonomous email marketing flow-testing agent using Gmail seed inboxes and Gemini",
+  "scripts": {
+    "predev": "node -e \"const fs=require('fs');if(!fs.existsSync('.env')&&fs.existsSync('.env.example')){fs.copyFileSync('.env.example','.env');console.log('[predev] created .env from .env.example');}\"",
+    "dev": "concurrently -n server,client -c blue,magenta -k \"npm:dev:server\" \"npm:dev:client:wait\"",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "dev:client:wait": "wait-on -t 30000 tcp:127.0.0.1:4000 && npm --prefix client run dev",
+    "build": "npm --prefix server run build && npm --prefix client run build",
+    "start": "npm --prefix server run start",
+    "install:all": "npm install && npm --prefix server install && npm --prefix client install",
+    "postinstall": "npm --prefix server install && npm --prefix client install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "wait-on": "^7.2.0"
+  }
+}

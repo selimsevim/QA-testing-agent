@@ -1,0 +1,1266 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>InboxFlow Agent Demo Presentation</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --paper: #ffffff;
+      --ink: #15171c;
+      --muted: #596170;
+      --soft: #8992a0;
+      --line: rgba(21, 23, 28, 0.12);
+      --line-strong: rgba(21, 23, 28, 0.22);
+      --green: #1f7a4f;
+      --green-soft: #e8f4ed;
+      --red: #c73e3a;
+      --red-soft: #fbeceb;
+      --amber: #a76600;
+      --amber-soft: #fbf0dd;
+      --blue: #3158c9;
+      --blue-soft: #eaf0ff;
+      --violet: #6e4ac9;
+      --violet-soft: #f0ecff;
+      --shadow: 0 20px 70px rgba(27, 36, 54, 0.12), 0 2px 8px rgba(27, 36, 54, 0.08);
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      font-family: var(--sans);
+      background:
+        linear-gradient(to right, rgba(21, 23, 28, 0.025) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(21, 23, 28, 0.025) 1px, transparent 1px),
+        var(--bg);
+      background-size: 56px 56px;
+      color: var(--ink);
+      overflow: hidden;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .deck-shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    .topbar,
+    .bottombar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 24px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      color: var(--ink);
+      letter-spacing: -0.01em;
+    }
+
+    .mark {
+      width: 30px;
+      height: 30px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: var(--paper);
+      display: grid;
+      place-items: center;
+      box-shadow: 0 1px 0 rgba(21, 23, 28, 0.05);
+    }
+
+    .mark svg {
+      display: block;
+    }
+
+    .hint {
+      font-size: 12px;
+      color: var(--soft);
+    }
+
+    .progress {
+      width: min(34vw, 420px);
+      height: 7px;
+      border-radius: 99px;
+      background: rgba(21, 23, 28, 0.08);
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--blue), var(--green));
+      transition: width 180ms ease;
+    }
+
+    .stage {
+      display: grid;
+      place-items: center;
+      padding: 10px 24px 18px;
+      min-height: 0;
+    }
+
+    .slides {
+      width: min(1180px, calc(100vw - 48px));
+      aspect-ratio: 16 / 9;
+      position: relative;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      padding: clamp(28px, 4vw, 58px);
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      display: none;
+      overflow: hidden;
+    }
+
+    .slide.active {
+      display: grid;
+      animation: slideIn 180ms ease both;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(8px) scale(0.995); }
+      to { opacity: 1; transform: none; }
+    }
+
+    .slide::after {
+      content: "";
+      position: absolute;
+      inset: auto 0 0 0;
+      height: 8px;
+      background: linear-gradient(90deg, var(--blue), var(--green), var(--amber));
+      opacity: 0.88;
+    }
+
+    .kicker {
+      display: inline-flex;
+      width: fit-content;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: #fbfcfd;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--blue);
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      max-width: 920px;
+      margin-top: 24px;
+      font-size: clamp(44px, 6.5vw, 82px);
+      line-height: 0.96;
+      letter-spacing: -0.055em;
+    }
+
+    h2 {
+      max-width: 880px;
+      margin-top: 18px;
+      font-size: clamp(34px, 4.2vw, 58px);
+      line-height: 1.02;
+      letter-spacing: -0.045em;
+    }
+
+    h3 {
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+
+    .lead {
+      max-width: 760px;
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: clamp(18px, 2vw, 24px);
+      line-height: 1.42;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1.02fr 0.98fr;
+      gap: 28px;
+      align-items: center;
+      min-height: 0;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .content-bottom {
+      align-self: end;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      background: #fbfcfd;
+      border-radius: 12px;
+      padding: 18px;
+    }
+
+    .card.white {
+      background: var(--paper);
+    }
+
+    .card.red {
+      border-color: rgba(199, 62, 58, 0.24);
+      background: var(--red-soft);
+    }
+
+    .card.green {
+      border-color: rgba(31, 122, 79, 0.24);
+      background: var(--green-soft);
+    }
+
+    .card.blue {
+      border-color: rgba(49, 88, 201, 0.22);
+      background: var(--blue-soft);
+    }
+
+    .card.amber {
+      border-color: rgba(167, 102, 0, 0.22);
+      background: var(--amber-soft);
+    }
+
+    .card.violet {
+      border-color: rgba(110, 74, 201, 0.22);
+      background: var(--violet-soft);
+    }
+
+    .metric {
+      font-family: var(--mono);
+      font-size: clamp(34px, 4.4vw, 56px);
+      line-height: 1;
+      letter-spacing: -0.08em;
+      color: var(--ink);
+    }
+
+    .metric-label {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .manual-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 22px;
+    }
+
+    .manual-item {
+      display: grid;
+      grid-template-columns: 34px 1fr auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    .num {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      font-family: var(--mono);
+      color: var(--blue);
+      background: var(--blue-soft);
+      font-weight: 800;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      height: 25px;
+      padding: 0 9px;
+      border-radius: 999px;
+      background: rgba(21, 23, 28, 0.06);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      border: 1px solid var(--line);
+      background: var(--paper);
+    }
+
+    .pill.good {
+      color: var(--green);
+      background: var(--green-soft);
+      border-color: rgba(31, 122, 79, 0.22);
+    }
+
+    .pill.bad {
+      color: var(--red);
+      background: var(--red-soft);
+      border-color: rgba(199, 62, 58, 0.22);
+    }
+
+    .flow {
+      display: grid;
+      gap: 16px;
+    }
+
+    .flow-row {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .persona-name {
+      color: var(--muted);
+      font-weight: 800;
+      font-size: 13px;
+      text-align: right;
+    }
+
+    .chain {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .node {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--paper);
+      padding: 0 13px;
+      font-size: 13px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .node.good {
+      color: var(--green);
+      background: var(--green-soft);
+      border-color: rgba(31, 122, 79, 0.28);
+    }
+
+    .node.bad {
+      color: var(--red);
+      background: var(--red-soft);
+      border-color: rgba(199, 62, 58, 0.28);
+    }
+
+    .arrow {
+      color: var(--soft);
+      font-family: var(--mono);
+      font-size: 18px;
+    }
+
+    .qa-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--paper);
+      font-size: 14px;
+    }
+
+    .qa-table th,
+    .qa-table td {
+      padding: 13px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    .qa-table th {
+      color: var(--muted);
+      background: #f8fafc;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .qa-table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .checklist {
+      display: grid;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .check {
+      display: grid;
+      grid-template-columns: 18px 1fr;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.38;
+    }
+
+    .check i {
+      width: 18px;
+      height: 18px;
+      margin-top: 1px;
+      border-radius: 6px;
+      background: var(--green-soft);
+      border: 1px solid rgba(31, 122, 79, 0.22);
+      position: relative;
+    }
+
+    .check i::after {
+      content: "";
+      position: absolute;
+      left: 5px;
+      top: 3px;
+      width: 5px;
+      height: 9px;
+      border: solid var(--green);
+      border-width: 0 2px 2px 0;
+      transform: rotate(42deg);
+    }
+
+    .stack {
+      display: grid;
+      gap: 14px;
+    }
+
+    .process {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+      margin-top: 28px;
+    }
+
+    .step {
+      min-height: 108px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fbfcfd;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .step b {
+      font-size: 14px;
+      letter-spacing: -0.01em;
+    }
+
+    .step span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.32;
+    }
+
+    .mini-arch {
+      display: grid;
+      gap: 12px;
+      margin-top: 22px;
+    }
+
+    .arch-row {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr 1fr;
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .arch-box {
+      min-height: 88px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--paper);
+      padding: 14px;
+    }
+
+    .arch-box strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .arch-box p {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .quote {
+      border-left: 4px solid var(--blue);
+      padding: 18px 22px;
+      background: #f8fafc;
+      border-radius: 0 12px 12px 0;
+      color: var(--ink);
+      font-size: clamp(20px, 2.5vw, 30px);
+      line-height: 1.26;
+      letter-spacing: -0.03em;
+    }
+
+    .notes {
+      margin-top: 18px;
+      padding: 12px 14px;
+      border: 1px dashed var(--line-strong);
+      border-radius: 12px;
+      color: var(--muted);
+      background: #fbfcfd;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .notes b {
+      color: var(--ink);
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .nav-btn {
+      height: 34px;
+      padding: 0 12px;
+      border-radius: 8px;
+      border: 1px solid var(--line-strong);
+      background: var(--paper);
+      color: var(--ink);
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .nav-btn:hover {
+      background: #f8fafc;
+    }
+
+    .slide-count {
+      font-family: var(--mono);
+      color: var(--muted);
+      min-width: 62px;
+      text-align: center;
+    }
+
+    .demo-script {
+      counter-reset: line;
+      display: grid;
+      gap: 12px;
+      margin-top: 22px;
+    }
+
+    .script-line {
+      counter-increment: line;
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 12px;
+      align-items: start;
+      padding: 13px 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fbfcfd;
+    }
+
+    .script-line::before {
+      content: counter(line);
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      background: var(--blue-soft);
+      color: var(--blue);
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .script-line strong {
+      display: block;
+      margin-bottom: 3px;
+    }
+
+    .script-line span {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.42;
+    }
+
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-top: 24px;
+    }
+
+    .mini-title {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    @media (max-width: 900px) {
+      body {
+        overflow: auto;
+      }
+
+      .deck-shell {
+        display: block;
+      }
+
+      .topbar,
+      .bottombar {
+        position: sticky;
+        background: rgba(244, 246, 248, 0.9);
+        backdrop-filter: blur(8px);
+        z-index: 5;
+      }
+
+      .topbar { top: 0; }
+      .bottombar { bottom: 0; }
+
+      .slides {
+        width: calc(100vw - 28px);
+        min-height: 760px;
+        aspect-ratio: auto;
+      }
+
+      .slide {
+        min-height: 760px;
+        padding: 28px;
+      }
+
+      .grid-2,
+      .grid-3,
+      .comparison,
+      .arch-row {
+        grid-template-columns: 1fr;
+      }
+
+      .process {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media print {
+      html,
+      body {
+        overflow: visible;
+        background: #fff;
+      }
+
+      .topbar,
+      .bottombar {
+        display: none;
+      }
+
+      .stage {
+        display: block;
+        padding: 0;
+      }
+
+      .slides {
+        width: 100%;
+        aspect-ratio: auto;
+      }
+
+      .slide {
+        position: relative;
+        display: grid !important;
+        page-break-after: always;
+        box-shadow: none;
+        border-radius: 0;
+        min-height: 100vh;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="deck-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark" aria-hidden="true">
+          <svg width="17" height="17" viewBox="0 0 18 18" fill="none">
+            <rect x="2" y="4" width="14" height="10" rx="2" stroke="#15171c" stroke-width="1.5" />
+            <path d="M3 5.7 9 9.6 15 5.7" stroke="#15171c" stroke-width="1.5" stroke-linecap="round" />
+            <circle cx="14" cy="13" r="2.2" fill="#3158c9" />
+          </svg>
+        </span>
+        InboxFlow Agent
+      </div>
+      <div class="progress" aria-label="Slide progress">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+      <div class="hint">Use arrow keys, space, or buttons</div>
+    </header>
+
+    <main class="stage">
+      <div class="slides" id="slides">
+        <section class="slide active">
+          <div>
+            <span class="kicker"><span class="dot"></span> Demo presentation</span>
+            <h1>Stop broken email journeys before customers see them.</h1>
+            <p class="lead">
+              InboxFlow Agent turns repetitive pre-launch email QA into an autonomous, evidence-backed launch gate.
+            </p>
+          </div>
+          <div class="content-bottom">
+            <div class="grid-3">
+              <div class="card blue">
+                <div class="metric">Agent</div>
+                <div class="metric-label">Runs the testing flow: observe, act, validate, report.</div>
+              </div>
+              <div class="card green">
+                <div class="metric">Proof</div>
+                <div class="metric-label">Every finding links to the email, URL, or page content that caused it.</div>
+              </div>
+              <div class="card amber">
+                <div class="metric">Launch</div>
+                <div class="metric-label">Final answer is simple: Ready to launch or Do not launch.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="slide">
+          <div class="grid-2">
+            <div>
+              <span class="kicker"><span class="dot"></span> The problem</span>
+              <h2>Email QA is still mostly manual.</h2>
+              <p class="lead">
+                Marketing teams repeatedly test the same fragile journey logic before every launch: inbox checks, branch checks, CTA checks, tracking checks, personalization checks, and compliance checks.
+              </p>
+              <div class="notes">
+                <b>Say this:</b> "The hard part is not reading one email. The hard part is proving the whole customer journey behaves correctly for every persona."
+              </div>
+            </div>
+            <div class="manual-list">
+              <div class="manual-item">
+                <div class="num">1</div>
+                <div>
+                  <strong>Set up seed contacts</strong>
+                  <p class="small">Create aliases/personas for clickers, non-clickers, product preferences, and edge cases.</p>
+                </div>
+                <span class="tag">repeat</span>
+              </div>
+              <div class="manual-item">
+                <div class="num">2</div>
+                <div>
+                  <strong>Wait and refresh inboxes</strong>
+                  <p class="small">Check whether each message arrives at the right time for the right contact.</p>
+                </div>
+                <span class="tag">slow</span>
+              </div>
+              <div class="manual-item">
+                <div class="num">3</div>
+                <div>
+                  <strong>Click through paths</strong>
+                  <p class="small">Manually test CTAs without accidentally triggering the wrong branch.</p>
+                </div>
+                <span class="tag">fragile</span>
+              </div>
+              <div class="manual-item">
+                <div class="num">4</div>
+                <div>
+                  <strong>Write the QA result</strong>
+                  <p class="small">Summarize screenshots, email subjects, broken links, and launch blockers.</p>
+                </div>
+                <span class="tag">manual</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="slide">
+          <div>
+            <span class="kicker"><span class="dot"></span> Human effort removed</span>
+            <h2>One campaign creates dozens of tiny checks.</h2>
+          </div>
+          <div class="comparison">
+            <div class="card red">
+              <div class="mini-title">Manual QA</div>
+              <table class="qa-table">
+                <thead>
+                  <tr>
+                    <th>Task</th>
+                    <th>Human action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Branch logic</td>
+                    <td>Compare expected vs actual emails for every persona.</td>
+                  </tr>
+                  <tr>
+                    <td>CTA checks</td>
+                    <td>Open links, avoid tracking side effects, record result.</td>
+                  </tr>
+                  <tr>
+                    <td>Personalization</td>
+                    <td>Scan copy for raw tokens and missing fallbacks.</td>
+                  </tr>
+                  <tr>
+                    <td>Compliance</td>
+                    <td>Find unsubscribe link and verify destination.</td>
+                  </tr>
+                  <tr>
+                    <td>Report</td>
+                    <td>Manually turn observations into launch guidance.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="card green">
+              <div class="mini-title">InboxFlow Agent</div>
+              <table class="qa-table">
+                <thead>
+                  <tr>
+                    <th>Task</th>
+                    <th>Agent action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Branch logic</td>
+                    <td>Builds expected persona paths and compares observed delivery.</td>
+                  </tr>
+                  <tr>
+                    <td>CTA checks</td>
+                    <td>Clicks only when persona behavior requires it.</td>
+                  </tr>
+                  <tr>
+                    <td>Personalization</td>
+                    <td>Flags unresolved tokens with email proof.</td>
+                  </tr>
+                  <tr>
+                    <td>Compliance</td>
+                    <td>Checks unsubscribe presence and destination intent.</td>
+                  </tr>
+                  <tr>
+                    <td>Report</td>
+                    <td>Generates launch readiness, replay, fixes, and evidence.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="notes">
+            <b>Say this:</b> "The value is not replacing judgment. It removes the repetitive observation work so humans spend time fixing the journey."
+          </div>
+        </section>
+
+        <section class="slide">
+          <div>
+            <span class="kicker"><span class="dot"></span> What gets missed</span>
+            <h2>The expensive failures are invisible until they ship.</h2>
+          </div>
+          <div class="grid-3 content-bottom">
+            <div class="card red">
+              <h3>Wrong branch</h3>
+              <p class="lead" style="font-size: 19px;">A non-clicker receives a click-only follow-up.</p>
+              <p class="small" style="margin-top: 12px;">This means the actual customer journey does not match the intended automation logic.</p>
+            </div>
+            <div class="card amber">
+              <h3>Broken revenue path</h3>
+              <p class="lead" style="font-size: 19px;">The primary CTA lands on the wrong page or a dead destination.</p>
+              <p class="small" style="margin-top: 12px;">The email can look fine while the conversion path is unusable.</p>
+            </div>
+            <div class="card violet">
+              <h3>Brand and compliance risk</h3>
+              <p class="lead" style="font-size: 19px;">Raw tokens, missing tracking, or broken unsubscribe flows go live.</p>
+              <p class="small" style="margin-top: 12px;">These are small QA misses that become very visible to customers.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="slide">
+          <div>
+            <span class="kicker"><span class="dot"></span> The solution</span>
+            <h2>An autonomous launch gate for lifecycle campaigns.</h2>
+          </div>
+          <div class="process">
+            <div class="step">
+              <b>Parse</b>
+              <span>Turns plain English into personas, branches, and timed steps.</span>
+            </div>
+            <div class="step">
+              <b>Watch</b>
+              <span>Monitors the seed inbox for each persona alias.</span>
+            </div>
+            <div class="step">
+              <b>Act</b>
+              <span>Clicks, opens, or holds back based on persona behavior.</span>
+            </div>
+            <div class="step">
+              <b>Probe</b>
+              <span>Checks landing pages while avoiding false click tracking.</span>
+            </div>
+            <div class="step">
+              <b>Reason</b>
+              <span>Uses semantic checks for copy, intent, and page alignment.</span>
+            </div>
+            <div class="step">
+              <b>Report</b>
+              <span>Writes a launch-readiness decision with evidence.</span>
+            </div>
+          </div>
+          <div class="notes">
+            <b>Say this:</b> "Gemini interprets intent. The backend executes safely. The report is evidence-backed."
+          </div>
+        </section>
+
+        <section class="slide">
+          <div class="grid-2">
+            <div>
+              <span class="kicker"><span class="dot"></span> Demo reveal</span>
+              <h2>The agent catches the journey, not just the email.</h2>
+              <p class="lead">
+                The strongest demo moment is the mismatch between what the marketer expected and what the customer actually received.
+              </p>
+            </div>
+            <div class="flow">
+              <div class="flow-row">
+                <div class="persona-name">Clicker</div>
+                <div class="chain">
+                  <span class="node">Email 1</span>
+                  <span class="arrow">-></span>
+                  <span class="node good">Clicked CTA</span>
+                  <span class="arrow">-></span>
+                  <span class="node good">Email 2A</span>
+                  <span class="pill good">Passed</span>
+                </div>
+              </div>
+              <div class="flow-row">
+                <div class="persona-name">Non-clicker</div>
+                <div class="chain">
+                  <span class="node">Email 1</span>
+                  <span class="arrow">-></span>
+                  <span class="node">No action</span>
+                  <span class="arrow">-></span>
+                  <span class="node bad">Email 2A</span>
+                  <span class="pill bad">Failed</span>
+                </div>
+              </div>
+              <div class="card red">
+                <h3>Expected result</h3>
+                <p class="small">The non-clicker should receive Reminder 2B, not the click-only follow-up.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="slide">
+          <div>
+            <span class="kicker"><span class="dot"></span> What the human gets back</span>
+            <h2>From manual QA labor to actionable fix list.</h2>
+          </div>
+          <div class="grid-3 content-bottom">
+            <div class="card white">
+              <div class="metric">Less</div>
+              <div class="metric-label">Inbox refreshing, screenshot collection, and spreadsheet tracking.</div>
+            </div>
+            <div class="card white">
+              <div class="metric">More</div>
+              <div class="metric-label">Time spent fixing the automation, copy, links, and compliance issues.</div>
+            </div>
+            <div class="card white">
+              <div class="metric">Clear</div>
+              <div class="metric-label">One launch decision with owners: Journey builder, Content, Tracking, Web/Dev, Compliance.</div>
+            </div>
+          </div>
+          <div class="quote content-bottom">
+            "Do not launch until branch logic, CTA destination, and personalization issues are fixed."
+          </div>
+        </section>
+
+        <section class="slide">
+          <div class="grid-2">
+            <div>
+              <span class="kicker"><span class="dot"></span> Why semantic checks matter</span>
+              <h2>Some QA cannot be solved by status codes.</h2>
+              <p class="lead">
+                A page can return successfully and still be the wrong page. A subject can be valid text and still mislead the recipient. That is where semantic reasoning helps.
+              </p>
+            </div>
+            <div class="stack">
+              <div class="card blue">
+                <h3>Deterministic checks</h3>
+                <div class="checklist">
+                  <div class="check"><i></i><span>Did the expected email arrive?</span></div>
+                  <div class="check"><i></i><span>Did a persona receive the wrong branch?</span></div>
+                  <div class="check"><i></i><span>Are UTM parameters present?</span></div>
+                  <div class="check"><i></i><span>Are raw personalization tokens visible?</span></div>
+                </div>
+              </div>
+              <div class="card violet">
+                <h3>Gemini reasoning</h3>
+                <div class="checklist">
+                  <div class="check"><i></i><span>Does the CTA destination match the campaign promise?</span></div>
+                  <div class="check"><i></i><span>Does the unsubscribe destination actually look like opt-out?</span></div>
+                  <div class="check"><i></i><span>Do subject, body, CTA, and goal align?</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="slide">
+          <div>
+            <span class="kicker"><span class="dot"></span> Why Vultr</span>
+            <h2>The browser is the cockpit. Vultr runs the agent.</h2>
+            <p class="lead">
+              For the hackathon minimum, Vultr Cloud Compute gives us the public, persistent runtime for the server-side agent loop.
+            </p>
+          </div>
+          <div class="mini-arch">
+            <div class="arch-row">
+              <div class="arch-box">
+                <strong>Public demo URL</strong>
+                <p>Judges can open one app URL instead of watching a local laptop-only demo.</p>
+              </div>
+              <div class="arch-box">
+                <strong>Vultr Cloud Compute</strong>
+                <p>Runs Express API, step runner, Gmail sync, semantic report generation, and persisted run state.</p>
+              </div>
+              <div class="arch-box">
+                <strong>External services</strong>
+                <p>Gemini interprets and reasons. Gmail supplies the seed inbox evidence.</p>
+              </div>
+            </div>
+            <div class="quote">
+              "Vultr is our stateful agent runtime. It hosts the backend that waits, syncs, acts, validates, and records the launch decision."
+            </div>
+          </div>
+        </section>
+
+        <section class="slide">
+          <div>
+            <span class="kicker"><span class="dot"></span> Jury alignment</span>
+            <h2>Why this is not another AI wrapper.</h2>
+          </div>
+          <div class="grid-3 content-bottom">
+            <div class="card green">
+              <h3>Enterprise utility</h3>
+              <p class="small">Marketing operations teams already do this manually before launch. The pain is real and recurring.</p>
+            </div>
+            <div class="card blue">
+              <h3>Agentic workflow</h3>
+              <p class="small">The agent perceives inbox state, acts as personas, waits for timing windows, validates outcomes, and writes a report.</p>
+            </div>
+            <div class="card amber">
+              <h3>Measurable value</h3>
+              <p class="small">Fewer manual test passes, fewer missed campaign errors, faster launch confidence, clearer owner-based fixes.</p>
+            </div>
+          </div>
+          <div class="notes">
+            <b>Say this:</b> "We are not generating emails. We are validating whether an automated customer journey is safe to launch."
+          </div>
+        </section>
+
+        <section class="slide">
+          <div>
+            <span class="kicker"><span class="dot"></span> Demo talk track</span>
+            <h2>What to say during the live demo.</h2>
+          </div>
+          <div class="demo-script">
+            <div class="script-line">
+              <div>
+                <strong>Open InboxFlow</strong>
+                <span>"This is a pre-launch QA agent for email journeys, running from our Vultr-hosted backend."</span>
+              </div>
+            </div>
+            <div class="script-line">
+              <div>
+                <strong>Start a demo campaign</strong>
+                <span>"The marketer writes the journey in plain English. The agent turns it into personas, branches, and timed steps."</span>
+              </div>
+            </div>
+            <div class="script-line">
+              <div>
+                <strong>Show the activity timeline</strong>
+                <span>"This is the repetitive human QA loop automated: sync, wait, act, sync again, validate."</span>
+              </div>
+            </div>
+            <div class="script-line">
+              <div>
+                <strong>Open the report</strong>
+                <span>"The important output is not a chat response. It is a launch decision with evidence."</span>
+              </div>
+            </div>
+            <div class="script-line">
+              <div>
+                <strong>Reveal the blocker</strong>
+                <span>"The non-clicker received the clicker follow-up. This campaign should not launch."</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="slide">
+          <div class="grid-2">
+            <div>
+              <span class="kicker"><span class="dot"></span> Closing line</span>
+              <h2>InboxFlow makes email launch QA auditable.</h2>
+              <p class="lead">
+                It removes repetitive human checking, catches customer-facing journey failures, and gives teams a clear launch decision.
+              </p>
+            </div>
+            <div class="stack">
+              <div class="card blue">
+                <h3>Before</h3>
+                <p class="small">Manual inbox checking, spreadsheet comparison, screenshots, subjective launch confidence.</p>
+              </div>
+              <div class="card green">
+                <h3>After</h3>
+                <p class="small">Autonomous test run, persona replay, evidence pack, owner-based fixes, deterministic launch verdict.</p>
+              </div>
+              <div class="quote">
+                "Gemini interprets intent. Vultr runs the agent. InboxFlow blocks unsafe launches."
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="bottombar">
+      <div class="controls">
+        <button class="nav-btn" id="prevBtn" type="button">Back</button>
+        <button class="nav-btn" id="nextBtn" type="button">Next</button>
+      </div>
+      <div class="slide-count" id="slideCount">1 / 12</div>
+      <div class="hint">Press F for fullscreen, P to print</div>
+    </footer>
+  </div>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll(".slide"));
+    const progressBar = document.getElementById("progressBar");
+    const slideCount = document.getElementById("slideCount");
+    const prevBtn = document.getElementById("prevBtn");
+    const nextBtn = document.getElementById("nextBtn");
+    let index = 0;
+
+    function render() {
+      slides.forEach((slide, i) => {
+        slide.classList.toggle("active", i === index);
+      });
+      const total = slides.length;
+      progressBar.style.width = `${((index + 1) / total) * 100}%`;
+      slideCount.textContent = `${index + 1} / ${total}`;
+      prevBtn.disabled = index === 0;
+      nextBtn.disabled = index === total - 1;
+    }
+
+    function go(delta) {
+      index = Math.max(0, Math.min(slides.length - 1, index + delta));
+      render();
+    }
+
+    function goTo(next) {
+      index = Math.max(0, Math.min(slides.length - 1, next));
+      render();
+    }
+
+    prevBtn.addEventListener("click", () => go(-1));
+    nextBtn.addEventListener("click", () => go(1));
+
+    document.addEventListener("keydown", (event) => {
+      const key = event.key.toLowerCase();
+      if (key === "arrowright" || key === " " || key === "pagedown") {
+        event.preventDefault();
+        go(1);
+      }
+      if (key === "arrowleft" || key === "pageup") {
+        event.preventDefault();
+        go(-1);
+      }
+      if (key === "home") {
+        event.preventDefault();
+        goTo(0);
+      }
+      if (key === "end") {
+        event.preventDefault();
+        goTo(slides.length - 1);
+      }
+      if (key === "f") {
+        event.preventDefault();
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        } else {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
+      if (key === "p") {
+        event.preventDefault();
+        window.print();
+      }
+    });
+
+    render();
+  </script>
+</body>
+</html>
