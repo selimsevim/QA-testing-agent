@@ -24,7 +24,7 @@ gmailRouter.get('/oauth/callback', async (req, res) => {
   try {
     const tokens = await exchangeCode(code);
     if (!tokens) return res.status(500).send('Token exchange failed');
-    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+    const clientUrl = process.env.CLIENT_URL2 || 'http://localhost:5173';
     res.redirect(`${clientUrl}/?gmail=connected`);
   } catch (err) {
     res.status(500).send('OAuth error: ' + (err as Error).message);

@@ -233,8 +233,8 @@ Selecting either populates the read-only prompt the agent will parse. Both flow 
 | `GEMINI_MODEL`          | no          | `gemini-2.5-pro`                                     | Used for reasoning-heavy calls. Flash is hard-coded for structured / fast calls.                   |
 | `GOOGLE_CLIENT_ID`      | live only   | —                                                    | Google OAuth client id.                                                                            |
 | `GOOGLE_CLIENT_SECRET`  | live only   | —                                                    | Google OAuth client secret.                                                                        |
-| `GOOGLE_REDIRECT_URI`   | no          | `http://localhost:4000/api/gmail/oauth/callback`    | OAuth callback URL.                                                                                |
-| `CLIENT_URL`            | no          | `http://localhost:5173`                              | Used to redirect after OAuth.                                                                      |
+| `GOOGLE_REDIRECT_URI2`  | no          | `http://localhost:4000/api/gmail/oauth/callback`    | OAuth callback URL.                                                                                |
+| `CLIENT_URL2`           | no          | `http://localhost:5173`                              | Used to redirect after OAuth.                                                                      |
 | `SFMC_SUBDOMAIN`        | demo only   | —                                                    | TSE subdomain shared by both `*.auth.marketingcloudapis.com` and `*.rest.marketingcloudapis.com`. |
 | `SFMC_CLIENT_ID`        | demo only   | —                                                    | Server-to-server installed package client id.                                                       |
 | `SFMC_CLIENT_SECRET`    | demo only   | —                                                    | Server-to-server installed package client secret.                                                   |
