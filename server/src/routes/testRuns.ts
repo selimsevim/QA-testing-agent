@@ -90,6 +90,27 @@ testRunsRouter.post('/:id/start', async (req, res) => {
   res.json({ ok: true, mode: useLiveGmail ? 'live' : 'demo', runId: run.id });
 });
 
+testRunsRouter.post('/:id/cancel', (req, res) => {
+  const run = getTestRun(req.params.id);
+  if (!run) return res.status(404).json({ error: 'not_found' });
+  if (run.status !== 'running') {
+    return res.json({ ok: true, alreadyDone: true, status: run.status });
+  }
+  updateTestRun(run.id, (r) => {
+    r.cancelRequested = true;
+    // Push an immediate event so the UI shows feedback before the runner
+    // notices the flag at its next checkpoint.
+    r.events.push({
+      id: 'e_' + nanoid(8),
+      timestamp: new Date().toISOString(),
+      title: 'Stop requested',
+      detail: 'Finishing the in-flight step and then halting.',
+      state: 'fail',
+    });
+  });
+  res.json({ ok: true, status: 'cancelling' });
+});
+
 testRunsRouter.get('/:id/events', (req, res) => {
   const run = getTestRun(req.params.id);
   if (!run) return res.status(404).json({ error: 'not_found' });
@@ -124,6 +145,8 @@ function buildReport(run: TestRun): TestRunReport {
     personas: run.personas,
     expectedFlow: run.expectedFlow,
     qaReport: run.qaReport,
+    triggersFiredAt: run.triggersFiredAt,
+    deliveryElapsedMs: run.deliveryElapsedMs,
   };
 }
 

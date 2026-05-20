@@ -113,8 +113,14 @@ export interface AgentEvent {
 
 export interface PersonaAction {
   persona: Persona;
-  action: 'clicked_primary_cta' | 'no_click' | 'failed_to_click' | 'opened' | 'replied' | 'unsubscribed';
+  // The actual link the user clicked (the in-email href, often an ESP tracking
+  // redirect like cl.s51.exct.net). Useful for proof but not for display.
   url?: string;
+  // The destination URL the click resolved to after redirects. ALWAYS prefer
+  // this for any user-facing rendering — the tracking URL is meaningless to
+  // a marketer reviewing the report.
+  finalUrl?: string;
+  action: 'clicked_primary_cta' | 'no_click' | 'failed_to_click' | 'opened' | 'replied' | 'unsubscribed';
   timestamp: string;
   result?: 'clicked' | 'failed' | 'opened' | 'replied' | 'unsubscribed';
 }
@@ -127,7 +133,7 @@ export interface PathResult {
   notes: string[];
 }
 
-export type RunStatus = 'draft' | 'running' | 'failed' | 'ready';
+export type RunStatus = 'draft' | 'running' | 'failed' | 'ready' | 'cancelled';
 
 export type CheckStatus = 'pass' | 'fail' | 'warn';
 
@@ -235,6 +241,8 @@ export interface TestRunReport {
   personas: PersonaConfig[];
   expectedFlow: ExpectedFlow;
   qaReport?: QaReport;
+  triggersFiredAt?: string;
+  deliveryElapsedMs?: number;
 }
 
 // Vendor-neutral campaign trigger config. For now only SFMC fire-entry-event is
@@ -274,4 +282,10 @@ export interface TestRun {
   nextStepAt?: string;
   steps?: FlowStep[];
   demoTimeCompression?: number; // 1 = real time; >1 means waits are divided by this
+  // Delivery timing — when the journey was fired and how long until every
+  // expected persona had at least one email in the mailbox.
+  triggersFiredAt?: string;
+  deliveryElapsedMs?: number;
+  // Set by the cancel endpoint; the runner checks it between awaits.
+  cancelRequested?: boolean;
 }

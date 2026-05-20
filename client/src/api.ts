@@ -45,6 +45,9 @@ export const api = {
   async startRun(id: string): Promise<{ ok: boolean }> {
     return json(await fetch(`${base}/test-runs/${id}/start`, { method: 'POST' }));
   },
+  async cancelRun(id: string): Promise<{ ok: boolean; status?: string }> {
+    return json(await fetch(`${base}/test-runs/${id}/cancel`, { method: 'POST' }));
+  },
   async getRun(id: string): Promise<TestRun> {
     return json(await fetch(`${base}/test-runs/${id}`));
   },

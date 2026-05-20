@@ -16,7 +16,7 @@ import {
   ReplayStep,
 } from '../types';
 import { nanoid } from 'nanoid';
-import { fetchPageContent, isTrackingUrl, PageFetchResult } from './linkChecker';
+import { fetchPageContent, PageFetchResult } from './linkChecker';
 
 function gmailMessageUrl(emailId: string | undefined): string | undefined {
   if (!emailId) return undefined;
@@ -379,6 +379,7 @@ CRITICAL RULES for steps and timing:
 - Order the steps in execution order: start → sync → [wait → action → wait → sync]* → validate → report.
 - Persona aliases MUST be "+<id without underscores>" so the agent can detect them by substring in any recipient header.
 - Personas come strictly from the text — do not invent.
+- For "wait" step descriptions: describe what we are waiting FOR, not what the persona is not doing. Good: "Wait 2 minutes for the reminder email to send". "Wait 10 minutes for the follow-up to arrive". Bad: "Wait 2 minutes for the alias to not click", "Wait 5 minutes for non-clicker behavior". Phrase positively — name the next expected event (a specific email, a sync, an action) the wait window is allowing for.
 
 RULES for email labels in "branches[].expected":
 - Use the same wording the user used. If they wrote "welcome email", the label is "Welcome email". If they wrote "Email 2A", the label is "Email 2A".
@@ -758,15 +759,16 @@ function visibleHtmlText(email: ParsedEmail): string {
 
 // ---- Evidence gathering (no interpretation) ----
 
-// Probe every non-tracking link in an email: fetch the page (HEAD-then-GET) and collect
-// title + visible-text excerpt. We never touch ESP tracker redirectors (would record
-// false clicks) and we never auto-fetch the primary CTA via this path (the persona's
-// click action handles that separately).
+// Probe every outbound link in an email: fetch the page (HEAD-then-GET, following
+// redirects) and collect the final URL + page title + visible-text excerpt. ESP
+// tracker URLs are followed to their final destination so the QA agent reasons
+// about where the link ACTUALLY lands, not the tracker redirector. CTA links are
+// also probed — the persona action engine reports whether the persona clicked,
+// the probe complements that with destination evidence.
 export async function probeEmailLinks(
   email: ParsedEmail,
   demoMode: boolean,
-): Promise<Array<{ url: string; role: 'cta' | 'unsubscribe' | 'other' | 'tracking'; probe?: PageFetchResult }>> {
-  const out: Array<{ url: string; role: 'cta' | 'unsubscribe' | 'other' | 'tracking'; probe?: PageFetchResult }> = [];
+): Promise<Array<{ url: string; role: 'cta' | 'unsubscribe' | 'other'; probe?: PageFetchResult }>> {
   const seen = new Set<string>();
   const ctaUrl = email.primaryCta?.url;
   const unsubUrl = email.unsubscribeLink;
@@ -776,22 +778,14 @@ export async function probeEmailLinks(
     if (seen.has(url)) continue;
     seen.add(url);
     if (url.startsWith('mailto:')) continue;
-    if (isTrackingUrl(url)) {
-      out.push({ url, role: 'tracking' });
-      continue;
-    }
     const role: 'cta' | 'unsubscribe' | 'other' =
       url === ctaUrl ? 'cta' : url === unsubUrl ? 'unsubscribe' : 'other';
     toProbe.push({ url, role });
   }
 
-  // Probe in parallel. CTA gets probed too — the agent will be told whether a persona
-  // clicked it (so the probe doesn't replace that signal, it complements it).
-  const probed = await Promise.all(
+  return Promise.all(
     toProbe.map(async (t) => ({ ...t, probe: await fetchPageContent(t.url, demoMode).catch(() => undefined) })),
   );
-  out.push(...probed);
-  return out;
 }
 
 export interface LinkProbeForPrompt {
@@ -876,8 +870,10 @@ Rules:
 - Reason from the evidence you are given. NEVER use HTTP status numbers, generic phrases like "non-2xx", or technical jargon in 'finding'/'fix'. Speak the way a marketer would.
 - A URL whose page contents are obviously a documentation placeholder (e.g. IANA's "This domain is for use in illustrative examples", or the page title plainly says it's reserved/example/placeholder) is NOT a real campaign destination, even if it returns 200. Surface it: "Link works but goes to a placeholder URL" or similar phrasing in YOUR own words.
 - For 'Primary CTA link': use the CTA click result if given, AND check whether the destination is real / placeholder / a totally different intent than expected.
-- For 'Unsubscribe page': inspect the destination's pageTextExcerpt. If it doesn't read like a page where a recipient can actually opt out, fail it with a reason that explains what the page IS instead. If no unsubscribe URL was provided at all, status "pass" with empty finding (the 'Unsubscribe' check handles absence).
-- For 'CTA button': comment if the CTA has no visible text, or the anchor text doesn't match the click intent.
+- 'Unsubscribe' vs 'Unsubscribe page' are STRICTLY separate concerns and must not double-flag the same root cause. Pick exactly one:
+  - 'Unsubscribe' = does the email contain ANY unsubscribe mechanism (link in body or List-Unsubscribe URL)? Fail ONLY when no unsubscribe URL was provided at all. If a URL is provided, status "pass" with empty finding — even if the destination is broken or wrong; the destination is the 'Unsubscribe page' check's job.
+  - 'Unsubscribe page' = inspect the destination's pageTextExcerpt. If the link is present but the destination is broken, a placeholder, or otherwise doesn't read like a real opt-out flow, fail it here with a reason that explains what the page IS instead. If no unsubscribe URL was provided, status "pass" with empty finding (absence is already covered above).
+- For 'CTA button': fail when the visible anchor text is missing, OR is itself a URL/tracking redirect (e.g. https://click.exacttarget.com/…) rather than a human-readable call to action. Tracking/redirect URLs in the HREF are normal and should NOT trigger a finding — only the anchor *text* matters here.
 - For 'Personalization': fail when unresolved template tokens are visible in the body (e.g. {{first_name}}, %%FirstName%%, [First Name]). If there are NO tokens at all in the email (the email simply doesn't use personalization), use status "pass" with finding empty. Do NOT claim that personalization "works" or is "verified" when the email contains no personalization in the first place.
 - For 'UTM tracking': only flag when CTA-style links are missing campaign tracking parameters. Don't flag unsubscribe links.
 - For 'Internal text': only flag visible template-author leakage (TODOs, internal labels, Lorem ipsum, CONTENT_BLOCK_* etc.). If the body is clean, status "pass" with empty finding.

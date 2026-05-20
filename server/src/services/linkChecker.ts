@@ -32,29 +32,55 @@ export function isTrackingUrl(url: string): boolean {
   }
 }
 
-export async function checkLink(url: string, demoMode: boolean): Promise<{ ok: boolean; status: number }> {
+export async function checkLink(url: string, demoMode: boolean): Promise<{ ok: boolean; status: number; finalUrl: string }> {
   if (demoMode) {
-    if (BROKEN_DEMO_URLS.has(url)) return { ok: false, status: 404 };
-    if (url.startsWith('https://example.com')) return { ok: true, status: 200 };
-    return { ok: true, status: 200 };
+    if (BROKEN_DEMO_URLS.has(url)) return { ok: false, status: 404, finalUrl: url };
+    if (url.startsWith('https://example.com')) return { ok: true, status: 200, finalUrl: url };
+    return { ok: true, status: 200, finalUrl: url };
   }
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
     const res = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: controller.signal });
     clearTimeout(timeout);
-    return { ok: res.status >= 200 && res.status < 400, status: res.status };
+    return { ok: res.status >= 200 && res.status < 400, status: res.status, finalUrl: res.url || url };
   } catch {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 5000);
       const res = await fetch(url, { method: 'GET', redirect: 'follow', signal: controller.signal });
       clearTimeout(timeout);
-      return { ok: res.status >= 200 && res.status < 400, status: res.status };
+      return { ok: res.status >= 200 && res.status < 400, status: res.status, finalUrl: res.url || url };
     } catch {
-      return { ok: false, status: 0 };
+      return { ok: false, status: 0, finalUrl: url };
     }
   }
+}
+
+// Resolve an ESP tracker URL to its eventual destination by following redirects.
+// We follow with HEAD first (cheap) and fall back to GET. Result is the URL the
+// browser would have landed on. Hitting a tracker registers as a click in the
+// ESP — callers must only invoke this on links they are willing to log a click for.
+export async function resolveFinalUrl(url: string, demoMode: boolean): Promise<string> {
+  if (demoMode) {
+    if (url.includes('unsubscribe')) return 'https://example.com/unsubscribe';
+    return url;
+  }
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: controller.signal });
+    clearTimeout(timeout);
+    if (res.url) return res.url;
+  } catch {}
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(url, { method: 'GET', redirect: 'follow', signal: controller.signal });
+    clearTimeout(timeout);
+    if (res.url) return res.url;
+  } catch {}
+  return url;
 }
 
 export interface PageFetchResult {
@@ -132,14 +158,19 @@ export async function fetchPageContent(url: string, demoMode: boolean): Promise<
 export interface LinkScanResult {
   broken: string[];
   checked: string[];
+  // Map of initial URL → resolved final URL after redirects. Populated for any
+  // link the scanner actually probed (so callers can show "tracker → final" in UI).
+  finalUrls: Record<string, string>;
   skipped: { url: string; reason: 'tracking' | 'cta' | 'unsubscribe' | 'mailto' | 'duplicate' }[];
 }
 
 export async function checkEmailLinks(email: ParsedEmail, demoMode: boolean): Promise<LinkScanResult> {
   const broken: string[] = [];
   const checked: string[] = [];
+  const finalUrls: Record<string, string> = {};
   const skipped: LinkScanResult['skipped'] = [];
   const seen = new Set<string>();
+  const seenFinal = new Set<string>();
   const ctaUrl = email.primaryCta?.url;
   for (const url of email.links) {
     if (seen.has(url)) {
@@ -151,26 +182,33 @@ export async function checkEmailLinks(email: ParsedEmail, demoMode: boolean): Pr
       skipped.push({ url, reason: 'mailto' });
       continue;
     }
-    if (email.unsubscribeLink && url === email.unsubscribeLink) {
-      skipped.push({ url, reason: 'unsubscribe' });
-      continue;
-    }
     if (ctaUrl && url === ctaUrl) {
       // The primary CTA is reserved for the persona's click action engine. Auto-touching
       // it from a health check would register a false click in the ESP.
       skipped.push({ url, reason: 'cta' });
       continue;
     }
-    if (isTrackingUrl(url)) {
-      // ESP click-tracking redirectors record any HTTP hit as a click. Never auto-probe.
-      skipped.push({ url, reason: 'tracking' });
+    if (email.unsubscribeLink && url === email.unsubscribeLink) {
+      // Unsubscribe has a dedicated persona action — never auto-trigger it from a
+      // health probe (would actually unsubscribe the test inbox).
+      skipped.push({ url, reason: 'unsubscribe' });
       continue;
     }
-    checked.push(url);
+    // For ESP tracker URLs the meaningful health check is the FINAL destination,
+    // not the redirector itself (which always 30x's and is therefore uninformative).
+    // checkLink already follows redirects, so the status reflects the landing page,
+    // and finalUrl tells us where we ended up. Skip duplicates by final URL.
     const res = await checkLink(url, demoMode);
-    if (!res.ok) broken.push(url);
+    if (seenFinal.has(res.finalUrl)) {
+      skipped.push({ url, reason: 'duplicate' });
+      continue;
+    }
+    seenFinal.add(res.finalUrl);
+    checked.push(url);
+    finalUrls[url] = res.finalUrl;
+    if (!res.ok) broken.push(res.finalUrl);
   }
-  return { broken, checked, skipped };
+  return { broken, checked, finalUrls, skipped };
 }
 
 // Execute whatever behaviorAction the persona is configured for. Never clicks unsubscribe.
@@ -206,6 +244,7 @@ export async function performPersonaAction(
       persona,
       action: 'clicked_primary_cta',
       url: cta.url,
+      finalUrl: check.finalUrl || cta.url,
       timestamp: now,
       result: check.ok ? 'clicked' : 'failed',
     };

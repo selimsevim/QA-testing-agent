@@ -104,7 +104,7 @@ export interface ParsedEmail {
   qaFlags: string[];
 }
 
-export type RunStatus = 'draft' | 'running' | 'failed' | 'ready';
+export type RunStatus = 'draft' | 'running' | 'failed' | 'ready' | 'cancelled';
 
 export type CheckStatus = 'pass' | 'fail' | 'warn';
 
@@ -245,6 +245,8 @@ export interface TestRunReport {
   personas: PersonaConfig[];
   expectedFlow: ExpectedFlow;
   qaReport?: QaReport;
+  triggersFiredAt?: string;
+  deliveryElapsedMs?: number;
 }
 
 export interface InboxItem {

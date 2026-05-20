@@ -1,7 +1,7 @@
 import { nanoid } from 'nanoid';
 import { AgentEvent, FlowStep, Persona, QaReport, TestRun } from '../types';
-import { getTestRun, updateTestRun } from './store';
-import { applyLabel, ensureLabel, syncMessages } from './gmailService';
+import { getTestRun, listProcessedEmailKeys, recordProcessedEmails, updateTestRun } from './store';
+import { applyLabel, ensureLabel, peekForArrivals, syncMessages } from './gmailService';
 import { checkEmailLinks, performPersonaAction } from './linkChecker';
 import { generateQaReport } from './geminiService';
 import { validateFlow } from './flowValidator';
@@ -82,12 +82,24 @@ export async function runStepPlan(runId: string, opts: StepRunnerOpts): Promise<
   // Fire any vendor-specific campaign triggers (e.g. SFMC entry events) so the
   // ESP delivers the emails this run is supposed to watch for. Done before the
   // step loop so the first sync window has emails to find.
-  await fireCampaignTriggers(runId);
+  try {
+    await fireCampaignTriggers(runId);
+  } catch (err) {
+    if (err instanceof RunCancelledError) {
+      finalizeCancelled(runId);
+      return;
+    }
+    throw err;
+  }
 
   const fresh = getTestRun(runId)!;
   const steps = fresh.steps || [];
 
   for (let i = 0; i < steps.length; i++) {
+    if (isCancelled(runId)) {
+      finalizeCancelled(runId);
+      return;
+    }
     const step = steps[i];
     updateTestRun(runId, (r) => {
       r.currentStepIndex = i;
@@ -100,6 +112,13 @@ export async function runStepPlan(runId: string, opts: StepRunnerOpts): Promise<
         if (r.steps) r.steps[i] = { ...r.steps[i], state: 'done', endedAt: nowIso() };
       });
     } catch (err) {
+      if (err instanceof RunCancelledError) {
+        updateTestRun(runId, (r) => {
+          if (r.steps) r.steps[i] = { ...r.steps[i], state: 'fail', endedAt: nowIso() };
+        });
+        finalizeCancelled(runId);
+        return;
+      }
       pushEvent(runId, {
         timestamp: nowIso(),
         title: `Step "${step.descr}" failed`,
@@ -148,10 +167,13 @@ async function executeStep(runId: string, step: FlowStep, opts: StepRunnerOpts):
     updateTestRun(runId, (r) => {
       r.nextStepAt = new Date(Date.now() + target).toISOString();
     });
-    await sleep(target);
-    updateTestRun(runId, (r) => {
-      r.nextStepAt = undefined;
-    });
+    try {
+      await cancellableSleep(runId, target);
+    } finally {
+      updateTestRun(runId, (r) => {
+        r.nextStepAt = undefined;
+      });
+    }
     pushEvent(runId, { timestamp: nowIso(), title: 'Wait complete', detail: step.durationLabel, state: 'done' });
     return;
   }
@@ -166,24 +188,42 @@ async function executeStep(runId: string, step: FlowStep, opts: StepRunnerOpts):
 
     if (opts.liveGmail) {
       const aliasList = run.personas.map((p) => p.alias).join(', ');
+      // Carry forward labels assigned in earlier syncs so the positional
+      // fallback in inferEmailLabel can pick the next-expected label.
       const alreadyReceivedByPersona: Record<string, string[]> = {};
       for (const e of run.emails) {
         (alreadyReceivedByPersona[e.persona] ||= []).push(e.emailLabel);
       }
-      const { emails, query, totalScanned, droppedNoPersona } = await syncMessages({
+      // Cross-run dedupe: skip emails already processed for this campaign in an earlier run.
+      const excludeKeys = listProcessedEmailKeys(run.campaignName);
+      throwIfCancelled(runId);
+      const { emails, query, totalScanned, droppedNoPersona, droppedAlreadyProcessed } = await syncMessages({
         campaignName: run.campaignName,
         seedInbox: run.seedInbox,
         personas: run.personas,
         expectedFlow: run.expectedFlow,
         alreadyReceivedByPersona,
+        excludeKeys,
       });
+      throwIfCancelled(runId);
       // Merge: keep all previously-seen emails by id
       const existing = new Set(run.emails.map((e) => e.id));
       const newOnes = emails.filter((e) => !existing.has(e.id));
+      // Record so the NEXT run of this campaign doesn't double-count these.
+      const aliasByPersonaId: Record<string, string> = {};
+      for (const p of run.personas) aliasByPersonaId[p.id] = p.alias;
+      recordProcessedEmails(
+        run.campaignName,
+        run.id,
+        newOnes
+          .filter((e) => aliasByPersonaId[e.persona])
+          .map((e) => ({ gmailId: e.id, alias: aliasByPersonaId[e.persona], emailDate: e.date })),
+      );
       let totalChecked = 0;
       let totalSkippedTracking = 0;
       let totalSkippedCta = 0;
       for (const e of newOnes) {
+        throwIfCancelled(runId);
         const scan = await checkEmailLinks(e, false);
         e.brokenLinks = scan.broken;
         totalChecked += scan.checked.length;
@@ -196,7 +236,7 @@ async function executeStep(runId: string, step: FlowStep, opts: StepRunnerOpts):
       pushEvent(runId, {
         timestamp: nowIso(),
         title: `Scanned ${totalScanned} message${totalScanned === 1 ? '' : 's'}`,
-        detail: `Gmail q: ${query} · looking for aliases ${aliasList} · ${newOnes.length} new, ${droppedNoPersona} dropped`,
+        detail: `Gmail q: ${query} · looking for aliases ${aliasList} · ${newOnes.length} new, ${droppedNoPersona} dropped, ${droppedAlreadyProcessed} already processed in previous runs`,
         state: newOnes.length ? 'done' : 'fail',
       });
       // Move newly-captured messages from Inbox into this run's Gmail folder
@@ -266,10 +306,13 @@ async function executeStep(runId: string, step: FlowStep, opts: StepRunnerOpts):
       unsubscribed: 'Unsubscribed (recorded, not executed)',
       failed_to_click: 'CTA click failed',
     };
+    // Show the destination URL the click resolved to, not the ESP tracking
+    // redirect — a marketer reading the event cares about the landing page.
+    const displayUrl = result.finalUrl || result.url || '';
     pushEvent(runId, {
       timestamp: nowIso(),
       title: verbMap[result.action] || result.action,
-      detail: `${persona.displayName} · ${result.url || ''}`,
+      detail: `${persona.displayName}${displayUrl ? ' · ' + displayUrl : ''}`,
       state: result.result === 'failed' ? 'fail' : 'done',
     });
     if (result.action === 'clicked_primary_cta' && result.result === 'clicked') {
@@ -301,6 +344,7 @@ async function executeStep(runId: string, step: FlowStep, opts: StepRunnerOpts):
   }
 
   if (step.kind === 'report') {
+    throwIfCancelled(runId);
     pushEvent(runId, {
       timestamp: nowIso(),
       title: step.descr || 'Generating report',
@@ -361,6 +405,32 @@ function labelDisplay(s: string): string {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((res) => setTimeout(res, ms));
+}
+
+function finalizeCancelled(runId: string) {
+  pushEvent(runId, {
+    timestamp: nowIso(),
+    title: 'Run cancelled',
+    detail: 'Stopped by user request.',
+    state: 'fail',
+  });
+  updateTestRun(runId, (r) => {
+    r.status = 'cancelled';
+    r.finishedAt = nowIso();
+    r.nextStepAt = undefined;
+    r.cancelRequested = false;
+  });
+}
+
+// Like sleep(ms) but wakes up periodically to honour a cancel request, so
+// long "wait 30 minutes" steps don't block cancellation until they finish.
+async function cancellableSleep(runId: string, ms: number): Promise<void> {
+  const tick = Math.min(2000, Math.max(250, ms));
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (isCancelled(runId)) throw new RunCancelledError();
+    await sleep(Math.min(tick, deadline - Date.now()));
+  }
 }
 
 function slugifyCampaign(name: string): string {
@@ -428,30 +498,98 @@ async function fireCampaignTriggers(runId: string): Promise<void> {
     }),
   );
 
-  // If at least one trigger fired successfully, hold off and let SFMC actually
-  // deliver before the agent starts inbox polling. This is a separate wait from
-  // any "wait X minutes" the journey itself contains; that's still executed by
-  // the parsed step plan.
+  // If at least one trigger fired successfully, poll Gmail until every persona
+  // has at least one matching message. Beats a blind wait — short delivery
+  // windows resume in seconds; long ones hold up to the timeout.
   if (results.some((ok) => ok)) {
-    const target = compressMs(run, TRIGGER_DELIVERY_WAIT_MS);
+    const triggeredAt = Date.now();
+    updateTestRun(runId, (r) => {
+      r.triggersFiredAt = new Date(triggeredAt).toISOString();
+    });
+    const timeout = compressMs(run, TRIGGER_DELIVERY_WAIT_MS);
+    const pollInterval = compressMs(run, POLL_INTERVAL_MS);
     pushEvent(runId, {
       timestamp: nowIso(),
-      title: 'Journey is triggered — waiting for emails to arrive',
-      detail: `Holding for ${formatRemaining(target)} so SFMC can deliver. The agent will start watching the inbox after that.`,
+      title: 'Journey is triggered — watching the inbox',
+      detail: `Polling every ${Math.round(pollInterval / 1000)}s for ${formatRemaining(timeout)} max so SFMC has time to deliver.`,
       state: 'active',
     });
     updateTestRun(runId, (r) => {
-      r.nextStepAt = new Date(Date.now() + target).toISOString();
+      r.nextStepAt = new Date(Date.now() + timeout).toISOString();
     });
-    await sleep(target);
+
+    const aliases = (run.personas || []).map((p) => p.alias).filter(Boolean);
+    const excludeKeys = listProcessedEmailKeys(run.campaignName);
+    let elapsedMs: number | undefined;
+    let pollCount = 0;
+    while (Date.now() - triggeredAt < timeout) {
+      if (isCancelled(runId)) {
+        updateTestRun(runId, (r) => { r.nextStepAt = undefined; });
+        throw new RunCancelledError();
+      }
+      // Don't probe immediately — give SFMC at least one interval to dispatch.
+      await sleep(pollInterval);
+      if (isCancelled(runId)) {
+        updateTestRun(runId, (r) => { r.nextStepAt = undefined; });
+        throw new RunCancelledError();
+      }
+      pollCount += 1;
+      try {
+        const { matchedAliases } = await peekForArrivals({ aliases, excludeKeys });
+        if (matchedAliases.size >= aliases.length) {
+          elapsedMs = Date.now() - triggeredAt;
+          break;
+        }
+      } catch (err) {
+        console.warn('[delivery-poll] peek failed', (err as Error).message);
+      }
+    }
+
     updateTestRun(runId, (r) => {
       r.nextStepAt = undefined;
+      if (elapsedMs !== undefined) r.deliveryElapsedMs = elapsedMs;
     });
-    pushEvent(runId, {
-      timestamp: nowIso(),
-      title: 'Delivery window elapsed',
-      detail: 'Now watching the inbox for captured emails.',
-      state: 'done',
-    });
+
+    if (elapsedMs !== undefined) {
+      pushEvent(runId, {
+        timestamp: nowIso(),
+        title: `Emails landed in ${formatElapsed(elapsedMs)}`,
+        detail: `Detected one message per persona after ${pollCount} poll${pollCount === 1 ? '' : 's'}. Now starting the inbox watcher.`,
+        state: 'done',
+      });
+    } else {
+      pushEvent(runId, {
+        timestamp: nowIso(),
+        title: 'Delivery window elapsed without all emails arriving',
+        detail: `Stopped polling after ${formatRemaining(timeout)}. Continuing — the inbox watcher will still pick up anything that arrives.`,
+        state: 'fail',
+      });
+    }
   }
+}
+
+const POLL_INTERVAL_MS = 15 * 1000;
+
+export function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  if (m === 0) return `${s} second${s === 1 ? '' : 's'}`;
+  if (s === 0) return `${m} minute${m === 1 ? '' : 's'}`;
+  return `${m} minute${m === 1 ? '' : 's'} ${s} second${s === 1 ? '' : 's'}`;
+}
+
+export class RunCancelledError extends Error {
+  constructor() {
+    super('Run cancelled');
+    this.name = 'RunCancelledError';
+  }
+}
+
+export function isCancelled(runId: string): boolean {
+  return !!getTestRun(runId)?.cancelRequested;
+}
+
+function throwIfCancelled(runId: string) {
+  if (isCancelled(runId)) throw new RunCancelledError();
 }

@@ -1,5 +1,12 @@
 import { google } from 'googleapis';
-import { GmailTokens, readGmailTokens, writeGmailTokens, writeGmailCache, readGmailCache } from './store';
+import {
+  GmailTokens,
+  processedEmailKey,
+  readGmailCache,
+  readGmailTokens,
+  writeGmailCache,
+  writeGmailTokens,
+} from './store';
 import { parseGmailMessage, PersonaAliasSpec } from './emailParser';
 import { classifyEmailLabel } from './geminiService';
 import { ExpectedFlow, ParsedEmail, PersonaConfig } from '../types';
@@ -86,36 +93,52 @@ async function getAuthedClient() {
 async function inferEmailLabel(opts: {
   subject: string;
   snippet: string;
-  expected: string[];
+  personaExpected: string[];
+  crossBranchExpected: string[];
   alreadyReceived: string[];
 }): Promise<string> {
-  const { subject, snippet, expected, alreadyReceived } = opts;
-  if (!expected.length) return subject || 'Email';
+  const { subject, snippet, personaExpected, crossBranchExpected, alreadyReceived } = opts;
+  // No expected labels anywhere (sync called without a flow) — just surface
+  // the subject so callers see something meaningful.
+  if (!personaExpected.length && !crossBranchExpected.length) {
+    return (subject || '').trim() || 'Email';
+  }
+  const subjLower = (subject || '').toLowerCase();
 
-  // 1) Verbatim match — if a candidate label appears literally in the subject,
-  // use it. (Pure deterministic shortcut; no interpretive keywords.)
-  const subjLower = subject.toLowerCase();
-  for (const lbl of expected) {
+  // 1) Verbatim match against this persona's expected labels.
+  for (const lbl of personaExpected) {
     if (lbl && subjLower.includes(lbl.toLowerCase())) return lbl;
   }
 
-  // 2) Ask Gemini to classify against the candidate labels.
-  try {
-    const gemini = await classifyEmailLabel({
-      subject,
-      snippet,
-      candidates: expected,
-    });
-    if (gemini && expected.includes(gemini)) return gemini;
-  } catch {
-    /* fall through */
+  // 2) Verbatim match against other branches' labels — surfaces wrong-branch
+  // deliveries (e.g. a reminder leaking to a clicker), which flowValidator
+  // flags as a branch error.
+  const otherLabels = crossBranchExpected.filter((l) => !personaExpected.includes(l));
+  for (const lbl of otherLabels) {
+    if (lbl && subjLower.includes(lbl.toLowerCase())) return lbl;
   }
 
-  // 3) Positional fallback: pick the next expected label this persona hasn't received yet
-  const unreceived = expected.filter((l) => !alreadyReceived.includes(l));
+  // 3) Gemini classify against the full union. Gemini decides whether this
+  // email belongs to the persona's expected list or another branch's.
+  if (crossBranchExpected.length) {
+    try {
+      const g = await classifyEmailLabel({ subject, snippet, candidates: crossBranchExpected });
+      if (g && crossBranchExpected.includes(g)) return g;
+    } catch { /* fall through */ }
+  }
+
+  // 4) Positional fallback: pick the next expected label this persona hasn't
+  // received yet. Required when labels are generic positional names
+  // ("First email", "Reminder email") that don't appear in subjects and that
+  // Gemini cannot map semantically.
+  const unreceived = personaExpected.filter((l) => !alreadyReceived.includes(l));
   if (unreceived[0]) return unreceived[0];
 
-  return expected[0];
+  // 5) The persona has already received every expected label and nothing else
+  // matched — flag as unexpected instead of force-fitting onto an expected
+  // slot. This is what catches a reminder leaking to a clicker.
+  const tail = (subject || '').trim().slice(0, 80) || 'Email';
+  return `Unexpected: ${tail}`;
 }
 
 export interface InboxItem {
@@ -309,12 +332,27 @@ export async function syncMessages(opts: {
   seedInbox: string;
   personas: PersonaConfig[];
   expectedFlow?: ExpectedFlow;
+  // Labels already captured for each persona in earlier syncs of this run.
+  // Used as the positional fallback inside inferEmailLabel so the next sync
+  // picks the next-expected label instead of the persona's first one again.
   alreadyReceivedByPersona?: Record<string, string[]>;
+  // Set of `${alias}|${emailDate}` keys for emails this campaign has already
+  // processed in earlier runs. Matching candidates are filtered out before any
+  // label-classification work, so re-runs don't double-count.
+  excludeKeys?: Set<string>;
   maxResults?: number;
   windowDays?: number;
-}): Promise<{ emails: ParsedEmail[]; query: string; totalScanned: number; droppedNoPersona: number }> {
+}): Promise<{
+  emails: ParsedEmail[];
+  query: string;
+  totalScanned: number;
+  droppedNoPersona: number;
+  droppedAlreadyProcessed: number;
+}> {
   const auth = await getAuthedClient();
-  if (!auth) return { emails: [], query: '', totalScanned: 0, droppedNoPersona: 0 };
+  if (!auth) {
+    return { emails: [], query: '', totalScanned: 0, droppedNoPersona: 0, droppedAlreadyProcessed: 0 };
+  }
   const gmail = google.gmail({ version: 'v1', auth });
 
   // We deliberately do NOT lock the query to a specific recipient address NOR to the
@@ -335,12 +373,16 @@ export async function syncMessages(opts: {
 
   const aliasSpecs: PersonaAliasSpec[] = (opts.personas || []).map((p) => ({ id: p.id, alias: p.alias }));
   const aliasTokens = aliasSpecs.map((s) => s.alias.toLowerCase()).filter(Boolean);
+  const aliasByPersonaId: Record<string, string> = {};
+  for (const s of aliasSpecs) aliasByPersonaId[s.id] = s.alias;
+  const excludeKeys = opts.excludeKeys || new Set<string>();
   const recipientHeaders = new Set(['to', 'delivered-to', 'x-original-to', 'x-forwarded-to', 'cc', 'bcc', 'x-rcpt-to', 'envelope-to']);
 
   const expectedByPersona: Record<string, string[]> = {};
   for (const b of opts.expectedFlow?.branches || []) {
     expectedByPersona[b.personaId] = b.expected || [];
   }
+  const crossBranchExpected = Array.from(new Set(Object.values(expectedByPersona).flat()));
   const alreadyByPersona: Record<string, string[]> = { ...(opts.alreadyReceivedByPersona || {}) };
 
   // Fetch all messages in parallel, then parse + persona-detect synchronously,
@@ -357,7 +399,8 @@ export async function syncMessages(opts: {
     }),
   );
 
-  // First pass: parse, detect persona, drop non-matches
+  // First pass: parse, detect persona, drop non-matches and already-processed
+  let droppedAlreadyProcessed = 0;
   const candidates: { parsed: ParsedEmail; subject: string; snippet: string }[] = [];
   for (const f of fetched) {
     if (!f) continue;
@@ -390,32 +433,101 @@ export async function syncMessages(opts: {
       'Unknown',
       aliasSpecs,
     );
+    // Cross-run dedupe: if (alias, send time) is already recorded for this campaign,
+    // skip — an earlier run already counted this email.
+    const matchedAlias = aliasByPersonaId[parsed.persona] || '';
+    if (matchedAlias && excludeKeys.has(processedEmailKey(matchedAlias, parsed.date))) {
+      droppedAlreadyProcessed += 1;
+      continue;
+    }
     candidates.push({ parsed, subject, snippet });
   }
 
-  // Second pass: classify labels in parallel
+  // Second pass: classify labels. Done sequentially per-persona so the
+  // positional fallback inside inferEmailLabel sees each prior label this
+  // sync just assigned. Different personas can still run in parallel.
+  const byPersona: Record<string, typeof candidates> = {};
+  for (const c of candidates) (byPersona[c.parsed.persona] ||= []).push(c);
   await Promise.all(
-    candidates.map(async ({ parsed, subject, snippet }) => {
-      const personaExpected = expectedByPersona[parsed.persona] || [];
-      const personaReceived = alreadyByPersona[parsed.persona] || [];
-      const allExpected = Array.from(
-        new Set([...personaExpected, ...Object.values(expectedByPersona).flat()]),
-      );
-      parsed.emailLabel = await inferEmailLabel({
-        subject,
-        snippet,
-        expected: personaExpected.length ? personaExpected : allExpected,
-        alreadyReceived: personaReceived,
-      });
-      alreadyByPersona[parsed.persona] = [...personaReceived, parsed.emailLabel];
+    Object.entries(byPersona).map(async ([personaId, group]) => {
+      // Stable order so repeated runs yield deterministic positional labels.
+      group.sort((a, b) => (a.parsed.date || '').localeCompare(b.parsed.date || ''));
+      for (const { parsed, subject, snippet } of group) {
+        const received = alreadyByPersona[personaId] || [];
+        parsed.emailLabel = await inferEmailLabel({
+          subject,
+          snippet,
+          personaExpected: expectedByPersona[personaId] || [],
+          crossBranchExpected,
+          alreadyReceived: received,
+        });
+        alreadyByPersona[personaId] = [...received, parsed.emailLabel];
+      }
     }),
   );
   emails.push(...candidates.map((c) => c.parsed));
   writeGmailCache({ messages: emails, fetchedAt: new Date().toISOString(), query });
-  return { emails, query, totalScanned: ids.length, droppedNoPersona };
+  return { emails, query, totalScanned: ids.length, droppedNoPersona, droppedAlreadyProcessed };
 }
 
 export function getCachedMessages(): ParsedEmail[] {
   const c = readGmailCache();
   return Array.isArray(c.messages) ? c.messages : [];
+}
+
+// Lightweight detection used by the delivery-wait poll loop. Just lists
+// message ids in the last day and inspects metadata headers — no body parse,
+// no Gemini classification, no cache write. Returns the set of persona aliases
+// that have at least one matching message in the mailbox right now.
+export async function peekForArrivals(opts: {
+  aliases: string[];
+  excludeKeys?: Set<string>;
+  windowDays?: number;
+  maxResults?: number;
+}): Promise<{ matchedAliases: Set<string>; totalScanned: number }> {
+  const auth = await getAuthedClient();
+  const matched = new Set<string>();
+  if (!auth || !opts.aliases.length) return { matchedAliases: matched, totalScanned: 0 };
+  const gmail = google.gmail({ version: 'v1', auth });
+  const days = Math.max(1, Math.min(opts.windowDays ?? 1, 30));
+  const list = await gmail.users.messages.list({
+    userId: 'me',
+    q: `newer_than:${days}d`,
+    maxResults: opts.maxResults || 50,
+  });
+  const ids = (list.data.messages || []).map((m) => m.id!).filter(Boolean);
+  const aliasTokens = opts.aliases.map((a) => a.toLowerCase()).filter(Boolean);
+  const recipientHeaders = ['to', 'delivered-to', 'x-original-to', 'x-forwarded-to', 'cc', 'bcc', 'x-rcpt-to', 'envelope-to'];
+  const excludeKeys = opts.excludeKeys || new Set<string>();
+
+  await Promise.all(
+    ids.map(async (id) => {
+      try {
+        const meta = await gmail.users.messages.get({
+          userId: 'me',
+          id,
+          format: 'metadata',
+          metadataHeaders: [...recipientHeaders.map((h) => h.replace(/(^|-)([a-z])/g, (_, p, c) => p + c.toUpperCase())), 'Date'],
+        });
+        const headers = meta.data.payload?.headers || [];
+        const headerMap: Record<string, string> = {};
+        for (const h of headers) headerMap[((h as any).name || '').toLowerCase()] = String((h as any).value || '');
+        const recipBlob = recipientHeaders
+          .map((k) => headerMap[k] || '')
+          .join(' ')
+          .toLowerCase();
+        const date = headerMap['date'] || '';
+        for (const alias of aliasTokens) {
+          if (!recipBlob.includes(alias)) continue;
+          // Skip messages already counted by a prior run for this campaign.
+          if (excludeKeys.size && date && excludeKeys.has(processedEmailKey(alias, date))) continue;
+          matched.add(alias);
+        }
+      } catch {
+        /* ignore individual fetch failures during polling */
+      }
+    }),
+  );
+
+  return { matchedAliases: matched, totalScanned: ids.length };
 }

@@ -30,6 +30,16 @@ function db(): Database.Database {
       data          TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_test_runs_created_at ON test_runs(created_at DESC);
+    CREATE TABLE IF NOT EXISTS processed_emails (
+      gmail_id      TEXT PRIMARY KEY,
+      campaign_name TEXT NOT NULL,
+      alias         TEXT NOT NULL,
+      email_date    TEXT NOT NULL,
+      run_id        TEXT NOT NULL,
+      recorded_at   TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_processed_campaign_alias_date
+      ON processed_emails(campaign_name, alias, email_date);
   `);
   migrateLegacyJson(_db);
   return _db;
@@ -118,6 +128,53 @@ export function updateTestRun(id: string, mut: (r: TestRun) => void): TestRun | 
 export function deleteTestRun(id: string): boolean {
   const res = db().prepare('DELETE FROM test_runs WHERE id = ?').run(id);
   return res.changes > 0;
+}
+
+// --- Cross-run processed-email tracking ---
+//
+// Same campaign re-run: we don't want to count emails that an earlier run already
+// processed. Key on (campaign_name, alias, email_date) so the dedupe is anchored to
+// the email's send time + the persona alias it was sent to, which is stable across
+// re-runs even if Gmail somehow re-issues an id.
+
+export function processedEmailKey(alias: string, emailDate: string): string {
+  return `${(alias || '').toLowerCase()}|${emailDate || ''}`;
+}
+
+export function listProcessedEmailKeys(campaignName: string): Set<string> {
+  const rows = db()
+    .prepare('SELECT alias, email_date FROM processed_emails WHERE campaign_name = ?')
+    .all(campaignName) as { alias: string; email_date: string }[];
+  const out = new Set<string>();
+  for (const r of rows) out.add(processedEmailKey(r.alias, r.email_date));
+  return out;
+}
+
+export function recordProcessedEmails(
+  campaignName: string,
+  runId: string,
+  entries: { gmailId: string; alias: string; emailDate: string }[],
+): void {
+  if (!entries.length) return;
+  const stmt = db().prepare(
+    `INSERT INTO processed_emails (gmail_id, campaign_name, alias, email_date, run_id, recorded_at)
+     VALUES (@gmail_id, @campaign_name, @alias, @email_date, @run_id, @recorded_at)
+     ON CONFLICT(gmail_id) DO NOTHING`,
+  );
+  const now = new Date().toISOString();
+  const tx = db().transaction((items: typeof entries) => {
+    for (const e of items) {
+      stmt.run({
+        gmail_id: e.gmailId,
+        campaign_name: campaignName,
+        alias: (e.alias || '').toLowerCase(),
+        email_date: e.emailDate || '',
+        run_id: runId,
+        recorded_at: now,
+      });
+    }
+  });
+  tx(entries);
 }
 
 // --- Gmail tokens + cache stay in their JSON files for now ---

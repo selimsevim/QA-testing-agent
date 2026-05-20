@@ -24,9 +24,9 @@ interface DemoCampaign {
 const DEMO_CAMPAIGNS: Record<DemoCampaignKey, DemoCampaign> = {
   welcome: {
     label: 'Welcome Campaign — Engagement check with timer',
-    tagline: 'Two emails. Reminder fires only if the recipient does not click within 5 minutes. Triggers real SFMC entry events.',
+    tagline: 'Two emails. Reminder fires only if the recipient does not click within 3 minutes. Triggers real SFMC entry events.',
     prompt:
-      'Welcome Campaign has two emails. Two test contacts are used: one with the alias +welcomeclicker and one with the alias +welcomenonclicker. The first email is sent to both contacts and contains a "Finish setup" CTA. If the recipient with the +welcomeclicker alias clicks the "Finish setup" CTA, nothing else happens. If the recipient with the +welcomenonclicker alias does not click within 5 minutes, send a reminder email with a "Verify email address" CTA.',
+      'Welcome Campaign has two emails. Two test contacts are used: one with the alias +welcomeclicker and one with the alias +welcomenonclicker. The first email is sent to both contacts and contains a "Finish setup" CTA. If the recipient with the +welcomeclicker alias clicks the "Finish setup" CTA, nothing else happens. If the recipient with the +welcomenonclicker alias does not click within 3 minutes, send a reminder email with a "Verify email address" CTA.',
     triggersConfigured: true,
   },
 };
@@ -163,6 +163,22 @@ export default function App() {
     // Clear the parsed-flow preview in the same batched render — no separate effect tick.
     if (parsedFlow) setParsedFlow(null);
   }
+
+  const [stopping, setStopping] = useState(false);
+  async function handleStop() {
+    if (!run || run.status !== 'running' || stopping) return;
+    if (!window.confirm('Stop this test run? In-flight steps will be aborted.')) return;
+    setStopping(true);
+    try {
+      await api.cancelRun(run.id);
+    } catch (err) {
+      console.error('cancel failed', err);
+    }
+  }
+  // Reset the "Stopping…" indicator once the server confirms the run has ended.
+  useEffect(() => {
+    if (run?.status !== 'running' && stopping) setStopping(false);
+  }, [run?.status, stopping]);
 
   async function handleStart() {
     if (busy) return;
@@ -435,6 +451,21 @@ export default function App() {
                           ? 'Re-run test'
                           : 'Start Test Run'}
                     </button>
+                    {run?.status === 'running' && (
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={handleStop}
+                        disabled={stopping}
+                        title="Cancel this test run"
+                        style={{ marginLeft: 8 }}
+                      >
+                        <svg width="11" height="11" viewBox="0 0 14 14" style={{ marginRight: 6 }}>
+                          <rect x="3" y="3" width="8" height="8" fill="currentColor" rx="1" />
+                        </svg>
+                        {stopping ? 'Stopping…' : 'Stop'}
+                      </button>
+                    )}
                   </div>
                 </div>
               </section>

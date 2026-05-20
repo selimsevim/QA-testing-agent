@@ -47,11 +47,21 @@ export function detectPrimaryCta(links: { href: string; text: string }[]): { url
   // ignore unsubscribe links
   const candidates = links.filter((l) => !isUnsubscribe(l.href, l.text));
   if (!candidates.length) return undefined;
+  // Prefer links whose anchor text is human-readable. extractLinks also yields
+  // entries for raw URLs found as plain text (text === href); those are almost
+  // never the real CTA button and would otherwise win the first-match fallback
+  // and confuse downstream QA into reporting "visible text is a raw URL".
+  const isUrlLike = (t: string, href: string) => {
+    const s = (t || '').trim();
+    return !s || /^https?:\/\//i.test(s) || s === href;
+  };
+  const named = candidates.filter((l) => !isUrlLike(l.text, l.href));
+  const pool = named.length ? named : candidates;
   for (const kw of CTA_KEYWORDS) {
-    const m = candidates.find((l) => l.text.toLowerCase().includes(kw));
+    const m = pool.find((l) => l.text.toLowerCase().includes(kw));
     if (m) return { url: m.href, text: m.text };
   }
-  return { url: candidates[0].href, text: candidates[0].text || candidates[0].href };
+  return { url: pool[0].href, text: pool[0].text || pool[0].href };
 }
 
 export function isUnsubscribe(href: string, text: string): boolean {

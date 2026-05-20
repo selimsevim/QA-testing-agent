@@ -20,9 +20,9 @@ export const DEMO_PRESETS: Record<DemoCampaignKey, DemoPreset> = {
   welcome: {
     key: 'welcome',
     label: 'Welcome Campaign — Engagement check with timer',
-    tagline: 'Two emails. Reminder fires only if the recipient does not click within 5 minutes.',
+    tagline: 'Two emails. Reminder fires only if the recipient does not click within 3 minutes.',
     prompt:
-      'Welcome Campaign has two emails. Two test contacts are used: one with the alias +welcomeclicker and one with the alias +welcomenonclicker. The first email is sent to both contacts and contains a "Finish setup" CTA. If the recipient with the +welcomeclicker alias clicks the "Finish setup" CTA, nothing else happens. If the recipient with the +welcomenonclicker alias does not click within 5 minutes, send a reminder email with a "Verify email address" CTA.',
+      'Welcome Campaign has two emails. Two test contacts are used: one with the alias +welcomeclicker and one with the alias +welcomenonclicker. The first email is sent to both contacts and contains a "Finish setup" CTA. If the recipient with the +welcomeclicker alias clicks the "Finish setup" CTA, nothing else happens. If the recipient with the +welcomenonclicker alias does not click within 3 minutes, send a reminder email with a "Verify email address" CTA.',
     triggers: [
       {
         vendor: 'sfmc',

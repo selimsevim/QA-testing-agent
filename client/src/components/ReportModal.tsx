@@ -87,6 +87,7 @@ export function ReportModal({
   const emails: EmailContentReport[] = qa?.emails || [];
   const replay: PersonaReplay[] = qa?.replay || [];
   const readiness: ReadinessSummary | undefined = qa?.readiness;
+  const deliveryText = formatDelivery(report.deliveryElapsedMs);
 
   return (
     <div className={`scrim ${open ? 'show' : ''}`} onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -142,6 +143,24 @@ export function ReportModal({
                   <button className="btn btn-primary readiness-retest" onClick={onRetest}>
                     Re-test now
                   </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {deliveryText && !isRunning && (
+            <div className="m-section">
+              <span className="eyebrow">Delivery timing</span>
+              <div className="readiness-card">
+                <div className="readiness-row">
+                  <span className="rk">Time to inbox</span>
+                  <span className="rv">{deliveryText}</span>
+                </div>
+                {report.triggersFiredAt && (
+                  <div className="readiness-row">
+                    <span className="rk">Journey fired at</span>
+                    <span className="rv">{new Date(report.triggersFiredAt).toLocaleString()}</span>
+                  </div>
                 )}
               </div>
             </div>
@@ -422,6 +441,17 @@ function EmailFrame({ html, title }: { html: string; title: string }) {
       onLoad={resize}
     />
   );
+}
+
+function formatDelivery(ms?: number): string | undefined {
+  if (typeof ms !== 'number' || !isFinite(ms) || ms <= 0) return undefined;
+  const total = Math.round(ms / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  const parts: string[] = [];
+  if (m > 0) parts.push(`${m} minute${m === 1 ? '' : 's'}`);
+  if (s > 0 || m === 0) parts.push(`${s} second${s === 1 ? '' : 's'}`);
+  return `It took ${parts.join(' ')} for the emails to land in the inbox after the journey was triggered.`;
 }
 
 function ReplayStepPill({ step }: { step: ReplayStep }) {
