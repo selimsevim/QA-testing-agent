@@ -8,6 +8,24 @@ The app is a React/Vite client plus an Express/TypeScript API. It can run in a s
 
 Watch the demo post on LinkedIn: [InboxFlow Agent demo](https://www.linkedin.com/posts/selim-sevim-8b7204102_lablab-ai-aiagents-ugcPost-7462811223483482113-Lwl-?utm_source=share&utm_medium=member_desktop&rcm=ACoAABoD2AsBe1-vgTEVnPRE8RWgqlFzqgrO6mE).
 
+## Screenshots
+
+**Campaign flow prompt**
+
+![Campaign flow prompt](screenshots/1.png)
+
+**Launch-readiness report**
+
+![Launch-readiness report](screenshots/3.png)
+
+**Rendered email proof**
+
+![Rendered email proof](screenshots/4.png)
+
+**Content and link findings**
+
+![Content and link findings](screenshots/5.png)
+
 ## What It Checks
 
 InboxFlow is built for pre-launch email QA:
