@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "Autonomous email marketing flow-testing agent using Gmail seed inboxes and Gemini",
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "predev": "node -e \"const fs=require('fs');if(!fs.existsSync('.env')&&fs.existsSync('.env.example')){fs.copyFileSync('.env.example','.env');console.log('[predev] created .env from .env.example');}\"",
     "dev": "concurrently -n server,client -c blue,magenta -k \"npm:dev:server\" \"npm:dev:client:wait\"",
