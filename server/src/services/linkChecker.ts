@@ -1,11 +1,5 @@
 import { BehaviorAction, ParsedEmail, Persona, PersonaAction } from '../types';
 
-// Demo-mode URLs that should fail link checks deterministically (only used when the
-// app is in demo mode and we need to simulate a broken link). Live mode never reads this.
-const BROKEN_DEMO_URLS = new Set<string>([
-  'https://example.com/broken-campaign-link',
-]);
-
 // Domains where ANY HTTP request (even HEAD) is recorded as a click by the ESP. We must
 // never auto-touch these from a link health check — only an explicit persona click action
 // is allowed to hit them.
@@ -13,7 +7,7 @@ export function isTrackingUrl(url: string): boolean {
   try {
     const u = new URL(url);
     const host = u.hostname.toLowerCase();
-    // SFMC: cl.s##.exct.net, *.exct.net, *.exacttarget.com
+    // Common ESP trackers: cl.s##.exct.net, *.exct.net, *.exacttarget.com
     if (/^cl\.s\d+\.exct\.net$/.test(host)) return true;
     if (host.endsWith('.exct.net') || host === 'exct.net') return true;
     if (host.endsWith('.exacttarget.com') || host === 'exacttarget.com') return true;
@@ -32,12 +26,7 @@ export function isTrackingUrl(url: string): boolean {
   }
 }
 
-export async function checkLink(url: string, demoMode: boolean): Promise<{ ok: boolean; status: number; finalUrl: string }> {
-  if (demoMode) {
-    if (BROKEN_DEMO_URLS.has(url)) return { ok: false, status: 404, finalUrl: url };
-    if (url.startsWith('https://example.com')) return { ok: true, status: 200, finalUrl: url };
-    return { ok: true, status: 200, finalUrl: url };
-  }
+export async function checkLink(url: string): Promise<{ ok: boolean; status: number; finalUrl: string }> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
@@ -61,11 +50,7 @@ export async function checkLink(url: string, demoMode: boolean): Promise<{ ok: b
 // We follow with HEAD first (cheap) and fall back to GET. Result is the URL the
 // browser would have landed on. Hitting a tracker registers as a click in the
 // ESP — callers must only invoke this on links they are willing to log a click for.
-export async function resolveFinalUrl(url: string, demoMode: boolean): Promise<string> {
-  if (demoMode) {
-    if (url.includes('unsubscribe')) return 'https://example.com/unsubscribe';
-    return url;
-  }
+export async function resolveFinalUrl(url: string): Promise<string> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
@@ -114,19 +99,7 @@ function htmlToVisibleText(html: string): string {
 // Fetches a page and extracts title + first-page text content. Used for semantic
 // landing-page validation (does the unsubscribe link actually go somewhere that lets
 // the user unsubscribe?). Bounded by timeout and a 200KB read cap.
-export async function fetchPageContent(url: string, demoMode: boolean): Promise<PageFetchResult> {
-  if (demoMode) {
-    if (url.includes('unsubscribe')) {
-      return {
-        ok: true,
-        status: 200,
-        finalUrl: url,
-        title: 'Unsubscribe — demo',
-        visibleText: 'You have been unsubscribed from this list. Click here to opt back in.',
-      };
-    }
-    return { ok: true, status: 200, finalUrl: url, title: 'Demo page', visibleText: 'Demo landing page content.' };
-  }
+export async function fetchPageContent(url: string): Promise<PageFetchResult> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
@@ -164,7 +137,7 @@ export interface LinkScanResult {
   skipped: { url: string; reason: 'tracking' | 'cta' | 'unsubscribe' | 'mailto' | 'duplicate' }[];
 }
 
-export async function checkEmailLinks(email: ParsedEmail, demoMode: boolean): Promise<LinkScanResult> {
+export async function checkEmailLinks(email: ParsedEmail): Promise<LinkScanResult> {
   const broken: string[] = [];
   const checked: string[] = [];
   const finalUrls: Record<string, string> = {};
@@ -198,7 +171,7 @@ export async function checkEmailLinks(email: ParsedEmail, demoMode: boolean): Pr
     // not the redirector itself (which always 30x's and is therefore uninformative).
     // checkLink already follows redirects, so the status reflects the landing page,
     // and finalUrl tells us where we ended up. Skip duplicates by final URL.
-    const res = await checkLink(url, demoMode);
+    const res = await checkLink(url);
     if (seenFinal.has(res.finalUrl)) {
       skipped.push({ url, reason: 'duplicate' });
       continue;
@@ -217,7 +190,6 @@ export async function performPersonaAction(
   persona: Persona,
   action: BehaviorAction,
   email: ParsedEmail | undefined,
-  demoMode: boolean,
 ): Promise<PersonaAction> {
   const now = new Date().toISOString();
   if (action === 'no_action') {
@@ -239,7 +211,7 @@ export async function performPersonaAction(
     if (cta.url === email?.unsubscribeLink) {
       return { persona, action: 'failed_to_click', url: cta.url, timestamp: now, result: 'failed' };
     }
-    const check = await checkLink(cta.url, demoMode);
+    const check = await checkLink(cta.url);
     return {
       persona,
       action: 'clicked_primary_cta',

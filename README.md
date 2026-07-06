@@ -1,12 +1,12 @@
 # InboxFlow Agent
 
-Autonomous QA for email marketing journeys. InboxFlow takes a plain-language campaign flow, infers the personas and waits, watches a seed inbox, exercises configured persona behavior, checks landing pages, and produces an evidence-backed launch-readiness report.
+Autonomous QA for email marketing journeys. InboxFlow takes a plain-language campaign flow, infers personas and waits, watches a connected Gmail seed inbox, exercises persona behavior, checks landing pages, and produces an evidence-backed launch-readiness report.
 
-The app is a React/Vite client plus an Express/TypeScript API. It can run in a self-contained demo mode, or in live mode with Gmail OAuth, Gemini, and optional Salesforce Marketing Cloud (SFMC) entry-event triggers.
+## Repository Metadata
 
-## Demo
+**Description:** AI agent for QA testing email marketing flows with Gmail inbox monitoring, persona replay, link/content checks, and launch-readiness reports.
 
-Watch the demo post on LinkedIn: [InboxFlow Agent demo](https://www.linkedin.com/posts/selim-sevim-8b7204102_lablab-ai-aiagents-ugcPost-7462811223483482113-Lwl-?utm_source=share&utm_medium=member_desktop&rcm=ACoAABoD2AsBe1-vgTEVnPRE8RWgqlFzqgrO6mE).
+**Suggested topics:** `ai-agent`, `email-qa`, `gmail-api`, `marketing-automation`, `campaign-testing`, `qa-automation`, `react`, `vite`, `express`, `typescript`, `gemini-api`
 
 ## Screenshots
 
@@ -14,9 +14,9 @@ Watch the demo post on LinkedIn: [InboxFlow Agent demo](https://www.linkedin.com
 
 ![Campaign flow prompt](screenshots/1.png)
 
-**Launch-readiness report**
+**Run history**
 
-![Launch-readiness report](screenshots/3.png)
+![Run history](screenshots/2.png)
 
 **Rendered email proof**
 
@@ -31,7 +31,7 @@ Watch the demo post on LinkedIn: [InboxFlow Agent demo](https://www.linkedin.com
 InboxFlow is built for pre-launch email QA:
 
 - Parses a marketer's journey description into personas, branches, expected email labels, actions, and timed steps.
-- Watches for Gmail messages addressed to persona aliases such as `+welcomeclicker` and `+welcomenonclicker`.
+- Watches Gmail messages addressed to persona aliases such as `+clicker` and `+nonclicker`.
 - Classifies each captured email against the expected branch labels.
 - Performs persona actions such as clicking the primary CTA or intentionally taking no action.
 - Runs deterministic flow validation for missing emails, duplicate sends, and wrong-branch deliveries.
@@ -59,27 +59,13 @@ InboxFlow is built for pre-launch email QA:
 |           |-- gmailService.ts     OAuth, inbox sync, labels, dedupe filtering
 |           |-- flowValidator.ts    Deterministic branch validation
 |           |-- linkChecker.ts      Link probes and persona actions
-|           |-- sfmcService.ts      SFMC server-to-server auth + event firing
-|           |-- demoPresets.ts      Demo campaign definitions
-|           |-- demoSimulator.ts    Demo-mode email injection
 |           `-- store.ts            SQLite and JSON-backed local state
-|-- server/data/                    Local runtime data: SQLite, WAL, cache, Gmail tokens
-|-- inboxflow-demo-presentation.html Standalone HTML demo deck
+|-- screenshots/                    README screenshots
 |-- package.json                    Root scripts for server/client orchestration
 `-- .env.example                    Environment variable template
 ```
 
-Generated build folders such as `client/dist` and `server/dist` are ignored by git.
-
-## Runtime Modes
-
-`APP_MODE` controls how runs sync email:
-
-- `APP_MODE=demo` - no Gmail OAuth is required. Sync steps use the deterministic demo simulator. Demo-time compression is available in the UI.
-- `APP_MODE=live` plus Google OAuth credentials and a connected Gmail account - sync steps use the Gmail API.
-- `APP_MODE=live` without a configured/connected Gmail account - the backend falls back to the demo simulator so the app can still run.
-
-Gemini is optional but strongly recommended. Without `GEMINI_API_KEY`, flow parsing falls back to deterministic heuristics and the semantic per-email report is reduced.
+Generated build folders and local runtime data are ignored by git.
 
 ## Setup
 
@@ -90,9 +76,7 @@ npm install
 # Create an env file if one was not already created by predev.
 cp .env.example .env
 
-# Edit .env for the mode you want.
-# For live Gmail runs: set APP_MODE=live, Gemini, and Google OAuth values.
-# For SFMC-triggered live demo runs: also set the SFMC values.
+# Fill in Gmail OAuth values and, ideally, GEMINI_API_KEY.
 
 # Start API and client together.
 npm run dev
@@ -120,36 +104,48 @@ There is no test script currently; `npm run build` is the main repository verifi
 
 | Variable | Required | Default | Notes |
 | --- | --- | --- | --- |
-| `APP_MODE` | no | `demo` | `demo` or `live`. Live Gmail sync only happens when this is `live` and Gmail is configured/connected. |
 | `PORT` | no | `4000` | Express API port. |
+| `SEED_INBOX` | no | connected Gmail address | Optional display/filter label for the seed account. |
 | `GEMINI_API_KEY` | recommended | empty | Enables Gemini parsing, classification, semantic flow-fix phrasing, and per-email reasoning. |
 | `GEMINI_MODEL` | no | `gemini-2.5-pro` | Used for reasoning-heavy calls. Fast structured calls use `gemini-2.5-flash`. |
-| `GOOGLE_CLIENT_ID` | live Gmail only | empty | Google OAuth web client id. |
-| `GOOGLE_CLIENT_SECRET` | live Gmail only | empty | Google OAuth web client secret. |
-| `GOOGLE_REDIRECT_URI2` | no | `http://localhost:4000/api/gmail/oauth/callback` | OAuth redirect URI. Must match Google Cloud. |
+| `GOOGLE_CLIENT_ID` | yes | empty | Google OAuth web client id. |
+| `GOOGLE_CLIENT_SECRET` | yes | empty | Google OAuth web client secret. |
+| `GOOGLE_REDIRECT_URI2` | no | `http://localhost:4000/api/gmail/oauth/callback` | OAuth redirect URI. Must match the Google OAuth client. |
 | `CLIENT_URL2` | no | `http://localhost:5173` | Browser URL to redirect to after OAuth completes. |
-| `SFMC_SUBDOMAIN` | SFMC trigger only | empty | Prefix shared by SFMC auth and REST hosts. |
-| `SFMC_CLIENT_ID` | SFMC trigger only | empty | SFMC server-to-server installed package client id. |
-| `SFMC_CLIENT_SECRET` | SFMC trigger only | empty | SFMC server-to-server installed package client secret. |
-| `SFMC_ACCOUNT_ID` | SFMC trigger only | empty | SFMC MID/account id included in the token request. |
 
-## Gmail OAuth
+Gemini is optional but strongly recommended. Without `GEMINI_API_KEY`, flow parsing falls back to deterministic heuristics and the semantic per-email report is reduced.
 
-Live Gmail runs require `https://www.googleapis.com/auth/gmail.modify` so the agent can read messages, create labels, apply the per-run label, and archive captured messages out of `INBOX`. The app never sends email, deletes email, or edits message content.
+## New Gmail Account Setup
 
-1. Create a Google Cloud project and enable the Gmail API.
-2. Configure the OAuth consent screen. For local testing, External + Testing is enough.
-3. Add the seed inbox account as a test user.
-4. Create OAuth 2.0 Web application credentials.
-5. Add `http://localhost:4000/api/gmail/oauth/callback` as an authorized redirect URI.
-6. Put `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and optionally `GOOGLE_REDIRECT_URI2` in `.env`.
-7. Start the app, then use the Connect/Reconnect button in the sidebar.
+Use a dedicated seed Gmail or Google Workspace mailbox for QA. This keeps campaign test traffic, labels, and OAuth access separate from a personal inbox.
 
-The backend stores Gmail tokens in `server/data/gmail-tokens.json`. If an older token does not include `gmail.modify`, `/api/config` marks `gmailNeedsReauth: true` and the sidebar shows Reconnect.
+1. Create or choose the Gmail account that will receive test campaign emails.
+2. In Google Cloud, create a project and enable the Gmail API.
+3. Configure OAuth consent for the project. For local/private testing, keep the app in testing mode and add the seed Gmail address as a test user.
+4. Create OAuth 2.0 credentials with application type `Web application`.
+5. Add this authorized redirect URI: `http://localhost:4000/api/gmail/oauth/callback`.
+6. Add the Gmail scope used by the app: `https://www.googleapis.com/auth/gmail.modify`.
+7. Copy the OAuth client id and client secret into `.env` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+8. Optional: set `SEED_INBOX=your-seed-address@gmail.com` so the UI and run records show the mailbox explicitly.
+9. Start the app with `npm run dev`.
+10. Open `http://localhost:5173`, click Connect, choose the seed Gmail account, and approve access.
+
+Google's OAuth web-server docs explain that web apps need authorized redirect URIs and that localhost redirect URIs are valid for testing: <https://developers.google.com/identity/protocols/oauth2/web-server>.
+
+Google classifies `gmail.modify` as a restricted Gmail scope. For a private/local app, test-user mode is usually enough. For a public production app, expect Google OAuth verification and possibly a restricted-scope security assessment: <https://developers.google.com/workspace/gmail/api/auth/scopes>.
+
+### Switching To Another Gmail Account
+
+If this repo was previously connected to a different Gmail account:
+
+1. Stop the server.
+2. Delete `server/data/gmail-tokens.json` if it exists.
+3. Start the server again.
+4. Click Connect/Reconnect in the sidebar and authorize the new Gmail account.
 
 ## Seed Inbox And Aliases
 
-The backend exposes a fixed seed inbox value of `sfmctest950@gmail.com` in `/api/config` and run records. Live Gmail sync does not search by that exact address. Instead, it scans recent Gmail messages and filters in code by persona aliases found in recipient headers or snippets. This supports routed or forwarded sandbox addresses where the alias tag lives on another local part.
+The connected Gmail account is the seed inbox. InboxFlow scans recent Gmail messages and filters them by persona aliases found in recipient headers or snippets.
 
 Persona aliases are inferred from persona ids as `+<id without underscores>` unless Gemini returns an explicit alias. Examples:
 
@@ -157,52 +153,21 @@ Persona aliases are inferred from persona ids as `+<id without underscores>` unl
 - `non_clicker` -> `+nonclicker`
 - `welcome_clicker` -> `+welcomeclicker`
 
-## SFMC Entry-Event Setup
-
-The Demo view can attach vendor triggers to a run. Currently the only implemented vendor is SFMC Journey Builder entry events:
-
-- Auth: `POST https://<SFMC_SUBDOMAIN>.auth.marketingcloudapis.com/v2/token`
-- Fire event: `POST https://<SFMC_SUBDOMAIN>.rest.marketingcloudapis.com/interaction/v1/events`
-
-The token request uses `grant_type=client_credentials` and includes `account_id`. Access tokens are cached in memory until roughly 30 seconds before expiry.
-
-Required `.env` values:
-
-```bash
-SFMC_SUBDOMAIN=
-SFMC_CLIENT_ID=
-SFMC_CLIENT_SECRET=
-SFMC_ACCOUNT_ID=
-```
-
-When a run has triggers and SFMC is configured, the runner fires all entry events in parallel before the parsed step plan starts. If at least one trigger succeeds, it polls Gmail metadata every 15 seconds for up to 3 minutes, looking for one message per persona alias. The run then continues into the normal sync/action/validate/report steps. When `demoTimeCompression` is supplied, this delivery poll is compressed the same way as wait steps.
-
-If SFMC values are missing, the runner records a "Skipping SFMC entry events" activity item and continues. In demo mode, simulated emails can still be injected by the demo simulator. To verify real SFMC email delivery, use `APP_MODE=live`, connect Gmail, and configure SFMC.
-
-## Current Demo Preset
-
-The repository currently exposes one demo campaign in both `client/src/App.tsx` and `server/src/services/demoPresets.ts`:
-
-**Welcome Campaign - Engagement check with timer**
-
-- Prompt: two contacts receive the first email. `+welcomeclicker` clicks "Finish setup"; `+welcomenonclicker` does not click and should receive a reminder after 3 minutes.
-- Triggered contacts: `sels+welcomeclicker@redpill-linpro.com` and `sels+welcomenonclicker@redpill-linpro.com`.
-- Contact keys: `DD302` and `DD303`.
-- EventDefinitionKey: `APIEvent-67412dd3-017b-8e6d-014d-3f3d850992f3`.
+For Gmail addresses, plus addressing lets mail sent to `name+clicker@gmail.com` arrive in `name@gmail.com`. Use those aliases in your email platform or campaign test audience so InboxFlow can tell personas apart.
 
 ## Run Lifecycle
 
 Every run stores an executable step plan in SQLite. The runner walks it sequentially:
 
 ```text
-[fire SFMC triggers + delivery poll]? -> start -> sync -> [wait -> action -> wait -> sync]* -> validate -> report
+start -> sync -> [wait -> action -> wait -> sync]* -> validate -> report
 ```
 
 Step behavior:
 
 - `start` records that the test plan was created.
-- `sync` either queries Gmail or injects demo emails, classifies labels, checks safe non-action links, creates/applies the run's Gmail label in live mode, and archives captured messages from Inbox.
-- `wait` sleeps for the parsed duration. Demo compression divides the wait length by `demoTimeCompression`.
+- `sync` queries Gmail, classifies labels, checks safe non-action links, creates/applies the run's Gmail label, and archives captured messages from Inbox.
+- `wait` sleeps for the parsed duration in real time.
 - `action` records persona behavior. Click actions target only the detected primary CTA and never execute unsubscribe links.
 - `validate` runs deterministic branch validation and writes `paths` plus legacy `findings`.
 - `report` probes landing pages, runs per-email reasoning when Gemini is available, writes `qaReport`, and sets the canonical run verdict.
@@ -211,17 +176,16 @@ The UI can cancel a running job through `POST /api/test-runs/:id/cancel`. Cancel
 
 ## UI Overview
 
-The client has four sidebar views:
+The client has three sidebar views:
 
 - **New Test** - free-form prompt entry for custom flows.
 - **Test Runs** - persisted run list, newest first. Running rows resume the live view; finished rows open the report.
 - **Inbox** - recent Gmail Inbox messages with unread count, expandable detail rows, rendered email preview, and Gmail links.
-- **Demo** - read-only preset prompt plus demo-time compression control.
 
 The main run view shows:
 
 - Run status badge: Draft, Running, Failed, or Ready.
-- Prompt/preset card.
+- Prompt card.
 - Parsed personas with alias and action.
 - Collapsible Agent Activity timeline.
 - Per-persona path status plus blocker/warning counts.
@@ -231,7 +195,6 @@ The report modal shows:
 
 - Header with run id, result, and recommendation.
 - Campaign readiness with top fixes and retest requirement.
-- Delivery timing when SFMC trigger delivery was measured.
 - Persona replay timeline.
 - Flow check table.
 - Content & Links table for each captured email.
@@ -259,14 +222,14 @@ The browser stores the active running id in `localStorage` as `inboxflow.activeR
 Configuration:
 
 - `GET /api/health` - service heartbeat.
-- `GET /api/config` - mode, Gemini model/config state, Gmail connection state, SFMC config state, and seed inbox.
+- `GET /api/config` - Gemini model/config state, Gmail connection state, and seed inbox.
 
 Runs:
 
 - `GET /api/test-runs` - list runs newest first.
-- `POST /api/test-runs` - create a draft run. Body accepts `expectedFlowText`, or `demoCampaign: "welcome"`, plus optional `demoTimeCompression`.
+- `POST /api/test-runs` - create a draft run. Body: `{ "expectedFlowText": "..." }`.
 - `GET /api/test-runs/:id` - get the full run snapshot.
-- `POST /api/test-runs/:id/start` - start the asynchronous runner.
+- `POST /api/test-runs/:id/start` - start the asynchronous runner. Requires a connected Gmail account.
 - `POST /api/test-runs/:id/cancel` - request cooperative cancellation.
 - `GET /api/test-runs/:id/events` - get activity timeline events.
 - `GET /api/test-runs/:id/report` - get `TestRunReport`.
@@ -322,7 +285,7 @@ Proof objects can cite Gmail messages, links, timestamps, or notes. Gmail proofs
 
 ## Safety Guardrails
 
-- The LLM never directly executes Gmail or SFMC actions. Backend code owns side effects.
+- The LLM never directly executes Gmail actions. Backend code owns side effects.
 - Gmail scope is `gmail.modify`, used for read, label creation, label application, and archive-from-Inbox only.
 - The agent never sends, deletes, or edits email content.
 - Persona click actions target only the detected primary CTA and refuse unsubscribe links.
@@ -331,8 +294,6 @@ Proof objects can cite Gmail messages, links, timestamps, or notes. Gmail proofs
 - Report-time page probing fetches link destinations for evidence and semantic analysis. Use care with real campaigns whose non-CTA links are also click-tracked.
 - Email previews are stripped of scripts, iframes, objects, embeds, forms, inline event handlers, and `javascript:` URLs before report rendering. Report iframes run without `allow-scripts`.
 - Inbox detail previews run in a sandboxed iframe with popups allowed so a user can manually open links in a new tab, but scripts still cannot execute.
-- SFMC integration only calls `/interaction/v1/events`; no other SFMC APIs are used.
-- SFMC access tokens are cached only in memory and are not persisted.
 
 ## Known Limits
 
@@ -340,11 +301,5 @@ Proof objects can cite Gmail messages, links, timestamps, or notes. Gmail proofs
 - There is no production job queue, scheduler, or multi-worker locking.
 - There is no multi-tenant account model, RBAC, billing, or production OAuth verification.
 - Only Gmail is implemented as the inbox provider.
-- Only SFMC Journey Builder entry events are implemented as campaign triggers.
-- Marketo, Klaviyo, and other ESP integrations are not implemented.
+- Marketo, Klaviyo, Braze, Salesforce Marketing Cloud, and other ESP integrations are not implemented.
 - Form-fill automation is intentionally out of scope.
-- The demo simulator deliberately creates flawed demo evidence for walkthroughs; it is not a replacement for live Gmail/SFMC verification.
-
-## Demo Deck
-
-`inboxflow-demo-presentation.html` is a standalone browser presentation deck for pitching or walking through the product story. It is not required to run the app.

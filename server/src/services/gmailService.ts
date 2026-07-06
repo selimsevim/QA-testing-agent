@@ -356,8 +356,8 @@ export async function syncMessages(opts: {
   const gmail = google.gmail({ version: 'v1', auth });
 
   // We deliberately do NOT lock the query to a specific recipient address NOR to the
-  // campaign name. SFMC sandboxes redirect to inbox aliases where the persona tag lives on
-  // some other local part, and SFMC subjects rarely match the campaign label in this tool.
+  // campaign name. Seed inboxes may receive routed or forwarded email where the
+  // persona tag lives on another local part, and subjects rarely match the campaign label.
   // The real signal is the persona alias on a recipient header, which we filter in JS.
   const days = Math.max(1, Math.min(opts.windowDays ?? 1, 30));
   const query = `newer_than:${days}d`;

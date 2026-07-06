@@ -6,5 +6,9 @@ build/
 *.log
 .DS_Store
 server/data/test-runs.json
+server/data/test-runs.json.migrated
 server/data/gmail-cache.json
 server/data/gmail-tokens.json
+server/data/*.sqlite
+server/data/*.sqlite-shm
+server/data/*.sqlite-wal

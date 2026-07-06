@@ -1101,59 +1101,6 @@ a.replay-step:hover { filter: brightness(0.96); }
   box-shadow: 0 0 0 3px var(--blue-bg);
 }
 
-/* Demo campaign picker */
-.demo-picker {
-  display: grid;
-  grid-template-columns: 130px 1fr;
-  align-items: center;
-  gap: 14px 16px;
-  padding: 4px 4px 14px;
-}
-.demo-picker label {
-  font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--ink-3);
-  align-self: center;
-}
-.demo-picker select {
-  font-family: var(--sans);
-  font-size: 14px;
-  color: var(--ink);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  padding: 8px 28px 8px 12px;
-  width: 100%;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238A929E' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-  cursor: pointer;
-}
-.demo-tagline {
-  grid-column: 2;
-  font-size: 12.5px;
-  color: var(--ink-3);
-  margin-top: -4px;
-}
-.demo-warning {
-  grid-column: 1 / -1;
-  margin-top: 8px;
-  padding: 10px 12px;
-  border-radius: var(--r-sm);
-  background: var(--amber-bg);
-  border: 1px solid var(--amber-line);
-  color: var(--amber);
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-.demo-warning code {
-  font-family: var(--mono);
-  font-size: 11.5px;
-  background: rgba(255,255,255,0.6);
-  padding: 1px 4px;
-  border-radius: 4px;
-}
-
 /* Inbox detail panel */
 .inbox-detail-row > td { padding: 0 !important; border-bottom: 1px solid var(--line) !important; }
 .inbox-detail {

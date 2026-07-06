@@ -29,11 +29,7 @@ export const api = {
       }),
     );
   },
-  async createRun(body: {
-    expectedFlowText?: string;
-    demoCampaign?: 'welcome';
-    demoTimeCompression?: number;
-  }): Promise<TestRun> {
+  async createRun(body: { expectedFlowText: string }): Promise<TestRun> {
     return json(
       await fetch(`${base}/test-runs`, {
         method: 'POST',

@@ -767,7 +767,6 @@ function visibleHtmlText(email: ParsedEmail): string {
 // the probe complements that with destination evidence.
 export async function probeEmailLinks(
   email: ParsedEmail,
-  demoMode: boolean,
 ): Promise<Array<{ url: string; role: 'cta' | 'unsubscribe' | 'other'; probe?: PageFetchResult }>> {
   const seen = new Set<string>();
   const ctaUrl = email.primaryCta?.url;
@@ -784,7 +783,7 @@ export async function probeEmailLinks(
   }
 
   return Promise.all(
-    toProbe.map(async (t) => ({ ...t, probe: await fetchPageContent(t.url, demoMode).catch(() => undefined) })),
+    toProbe.map(async (t) => ({ ...t, probe: await fetchPageContent(t.url).catch(() => undefined) })),
   );
 }
 
@@ -988,13 +987,12 @@ export async function generateQaReport(input: QaReportInput): Promise<QaReport> 
 
   const flowChecks = await buildFlowChecks(input);
 
-  const demoMode = (process.env.APP_MODE || 'demo').toLowerCase() !== 'live';
   const personaFor = (id: string) => run.expectedFlow.personas.find((p) => p.id === id);
 
   const emailReports: EmailContentReport[] = await Promise.all(
     emails.map(async (e) => {
       // Evidence gathering: probe every non-tracking link the email points to.
-      const linkProbes = await probeEmailLinks(e, demoMode);
+      const linkProbes = await probeEmailLinks(e);
       const flat: LinkProbeForPrompt[] = linkProbes.map((p) => ({
         url: p.url,
         role: p.role,

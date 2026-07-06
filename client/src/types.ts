@@ -189,15 +189,6 @@ export interface QaReport {
   emails: EmailContentReport[];
 }
 
-export interface CampaignTrigger {
-  vendor: 'sfmc';
-  personaAlias?: string;
-  contactKey: string;
-  email: string;
-  eventDefinitionKey: string;
-  data?: Record<string, string | number>;
-}
-
 export interface TestRun {
   id: string;
   campaignName: string;
@@ -205,7 +196,6 @@ export interface TestRun {
   expectedFlowText: string;
   expectedFlow: ExpectedFlow;
   personas: PersonaConfig[];
-  triggers?: CampaignTrigger[];
   status: RunStatus;
   createdAt: string;
   startedAt?: string;
@@ -222,7 +212,6 @@ export interface TestRun {
   currentStepIndex?: number;
   nextStepAt?: string;
   steps?: FlowStep[];
-  demoTimeCompression?: number;
 }
 
 export interface TestRunReport {
@@ -245,8 +234,6 @@ export interface TestRunReport {
   personas: PersonaConfig[];
   expectedFlow: ExpectedFlow;
   qaReport?: QaReport;
-  triggersFiredAt?: string;
-  deliveryElapsedMs?: number;
 }
 
 export interface InboxItem {
@@ -281,13 +268,11 @@ export interface InboxMessageDetail {
 }
 
 export interface ConfigResponse {
-  mode: 'demo' | 'live';
   geminiConfigured: boolean;
   geminiModel?: string;
   gmailConfigured: boolean;
   gmailConnected: boolean;
   gmailNeedsReauth?: boolean;
   gmailEmail?: string;
-  sfmcConfigured?: boolean;
   seedInbox?: string;
 }

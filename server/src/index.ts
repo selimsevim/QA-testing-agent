@@ -11,7 +11,6 @@ import { gmailRouter } from './routes/gmail';
 import { agentRouter } from './routes/agent';
 import { gmailConfigured, getConnectionStatus } from './services/gmailService';
 import { geminiConfigured } from './services/geminiService';
-import { sfmcConfigured } from './services/sfmcService';
 
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
@@ -25,18 +24,15 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.get('/api/config', (_req, res) => {
-  const mode = (process.env.APP_MODE || 'demo').toLowerCase();
   const gmailStatus = getConnectionStatus();
   res.json({
-    mode,
     geminiConfigured: geminiConfigured(),
     geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-pro',
     gmailConfigured: gmailConfigured(),
     gmailConnected: gmailStatus.connected,
     gmailEmail: gmailStatus.email,
     gmailNeedsReauth: !!gmailStatus.needsReauth,
-    sfmcConfigured: sfmcConfigured(),
-    seedInbox: 'sfmctest950@gmail.com',
+    seedInbox: process.env.SEED_INBOX || gmailStatus.email || '',
   });
 });
 
@@ -69,9 +65,7 @@ app.use((err: any, _req: any, res: any, _next: any) => {
 });
 
 app.listen(PORT, () => {
-  const mode = (process.env.APP_MODE || 'demo').toLowerCase();
   console.log(`InboxFlow server listening on http://localhost:${PORT}`);
-  console.log(`  mode: ${mode}`);
   console.log(`  gemini: ${geminiConfigured() ? 'configured' : 'not configured (deterministic fallback)'}`);
-  console.log(`  gmail OAuth: ${gmailConfigured() ? 'configured' : 'not configured (demo only)'}`);
+  console.log(`  gmail OAuth: ${gmailConfigured() ? 'configured' : 'not configured'}`);
 });

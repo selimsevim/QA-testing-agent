@@ -1,6 +1,6 @@
 import type { ConfigResponse } from '../types';
 
-export type AppView = 'new-test' | 'test-runs' | 'inbox' | 'demo';
+export type AppView = 'new-test' | 'test-runs' | 'inbox';
 
 export function Sidebar({
   config,
@@ -18,7 +18,7 @@ export function Sidebar({
   inboxUnread: number;
 }) {
   const gmailConnected = !!config?.gmailConnected;
-  const gmailEmail = config?.gmailEmail || (config?.mode === 'demo' ? 'sfmctest950@gmail.com (demo)' : 'not connected');
+  const gmailEmail = config?.gmailEmail || 'not connected';
   return (
     <aside className="rail">
       <div className="brand">
@@ -66,15 +66,6 @@ export function Sidebar({
           </svg>
           Inbox{inboxUnread > 0 ? <span className="count count-strong">({inboxUnread})</span> : null}
         </button>
-        <button
-          className={`nav-item ${view === 'demo' ? 'active' : ''}`}
-          onClick={() => onView('demo')}
-        >
-          <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
-            <polygon points="4,3 12,8 4,13" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" fill="none" />
-          </svg>
-          Demo
-        </button>
       </div>
 
       <div className="rail-foot">
@@ -86,9 +77,7 @@ export function Sidebar({
                 ? 'Gmail connected'
                 : config?.gmailNeedsReauth
                   ? 'Reconnect needed'
-                  : config?.mode === 'demo'
-                    ? 'Demo mode'
-                    : 'Gmail not connected'}
+                  : 'Gmail not connected'}
             </div>
             <div className="addr">{gmailEmail}</div>
           </div>

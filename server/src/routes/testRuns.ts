@@ -3,15 +3,14 @@ import { nanoid } from 'nanoid';
 import { listTestRuns, getTestRun, saveTestRun, updateTestRun } from '../services/store';
 import { parseExpectedFlowAndName } from '../services/geminiService';
 import { runStepPlan } from '../services/stepRunner';
-import { injectDemoEmails } from '../services/demoSimulator';
-import { gmailConfigured, syncMessages } from '../services/gmailService';
-import { DEMO_PRESETS, isDemoCampaignKey } from '../services/demoPresets';
+import { getConnectionStatus, gmailConfigured, syncMessages } from '../services/gmailService';
 import { TestRun, TestRunReport, RunStatus, PersonaConfig } from '../types';
 
 export const testRunsRouter = Router();
 
-// Seed inbox is hardcoded — all SFMC test emails land here regardless of env.
-const FIXED_SEED_INBOX = 'sfmctest950@gmail.com';
+function getSeedInbox(): string {
+  return process.env.SEED_INBOX || getConnectionStatus().email || '';
+}
 
 testRunsRouter.get('/', (_req, res) => {
   res.json(listTestRuns());
@@ -25,13 +24,7 @@ testRunsRouter.get('/:id', (req, res) => {
 
 testRunsRouter.post('/', async (req, res) => {
   const body = req.body || {};
-  const demoCampaign: string | undefined = body.demoCampaign;
-  const demoPreset = demoCampaign && isDemoCampaignKey(demoCampaign) ? DEMO_PRESETS[demoCampaign] : undefined;
-
-  // If a demoCampaign is specified, use the preset's canonical prompt verbatim.
-  // Otherwise the user provided a free-form prompt.
-  const expectedFlowText: string = demoPreset ? demoPreset.prompt : (body.expectedFlowText || '');
-  const demoTimeCompression = Math.max(1, Number(body.demoTimeCompression || 1));
+  const expectedFlowText: string = body.expectedFlowText || '';
 
   if (!expectedFlowText.trim()) {
     return res.status(400).json({ error: 'missing_prompt', message: 'expectedFlowText is required' });
@@ -44,11 +37,10 @@ testRunsRouter.post('/', async (req, res) => {
   const run: TestRun = {
     id,
     campaignName,
-    seedInbox: FIXED_SEED_INBOX,
+    seedInbox: getSeedInbox(),
     expectedFlowText,
     expectedFlow,
     personas,
-    triggers: demoPreset?.triggers,
     status: 'draft',
     createdAt: new Date().toISOString(),
     events: [],
@@ -57,7 +49,6 @@ testRunsRouter.post('/', async (req, res) => {
     findings: [],
     paths: [],
     steps: expectedFlow.steps?.map((s) => ({ ...s, state: 'pending' })),
-    demoTimeCompression,
   };
   saveTestRun(run);
   res.json(run);
@@ -66,13 +57,15 @@ testRunsRouter.post('/', async (req, res) => {
 testRunsRouter.post('/:id/start', async (req, res) => {
   const run = getTestRun(req.params.id);
   if (!run) return res.status(404).json({ error: 'not_found' });
-  const mode = (process.env.APP_MODE || 'demo').toLowerCase();
-  const useLiveGmail = mode === 'live' && gmailConfigured();
+  const gmailStatus = getConnectionStatus();
+  if (!gmailConfigured() || !gmailStatus.connected) {
+    return res.status(400).json({
+      error: 'gmail_not_connected',
+      message: 'Connect a Gmail account before starting a production test run.',
+    });
+  }
 
-  runStepPlan(run.id, {
-    liveGmail: useLiveGmail,
-    demoInjector: useLiveGmail ? undefined : injectDemoEmails,
-  }).catch((err) => {
+  runStepPlan(run.id).catch((err) => {
     console.error('[runStepPlan] failed', err);
     updateTestRun(run.id, (r) => {
       r.status = 'failed';
@@ -87,7 +80,7 @@ testRunsRouter.post('/:id/start', async (req, res) => {
     });
   });
 
-  res.json({ ok: true, mode: useLiveGmail ? 'live' : 'demo', runId: run.id });
+  res.json({ ok: true, runId: run.id });
 });
 
 testRunsRouter.post('/:id/cancel', (req, res) => {
@@ -145,8 +138,6 @@ function buildReport(run: TestRun): TestRunReport {
     personas: run.personas,
     expectedFlow: run.expectedFlow,
     qaReport: run.qaReport,
-    triggersFiredAt: run.triggersFiredAt,
-    deliveryElapsedMs: run.deliveryElapsedMs,
   };
 }
 
@@ -293,6 +284,7 @@ testRunsRouter.post('/:id/sync-gmail', async (req, res) => {
   const run = getTestRun(req.params.id);
   if (!run) return res.status(404).json({ error: 'not_found' });
   if (!gmailConfigured()) return res.status(400).json({ error: 'gmail_not_configured' });
+  if (!getConnectionStatus().connected) return res.status(400).json({ error: 'gmail_not_connected' });
   try {
     const { emails } = await syncMessages({
       campaignName: run.campaignName,

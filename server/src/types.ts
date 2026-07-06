@@ -241,19 +241,6 @@ export interface TestRunReport {
   personas: PersonaConfig[];
   expectedFlow: ExpectedFlow;
   qaReport?: QaReport;
-  triggersFiredAt?: string;
-  deliveryElapsedMs?: number;
-}
-
-// Vendor-neutral campaign trigger config. For now only SFMC fire-entry-event is
-// implemented, but the shape is general enough to add other ESPs later.
-export interface CampaignTrigger {
-  vendor: 'sfmc';
-  personaAlias?: string;       // e.g. "+welcomeclicker" (informational; used for events)
-  contactKey: string;          // ContactKey in SFMC parlance
-  email: string;               // The recipient email
-  eventDefinitionKey: string;  // SFMC Journey Builder API Event key
-  data?: Record<string, string | number>;  // Additional Data field on the entry event
 }
 
 export interface TestRun {
@@ -263,7 +250,6 @@ export interface TestRun {
   expectedFlowText: string;
   expectedFlow: ExpectedFlow;
   personas: PersonaConfig[];
-  triggers?: CampaignTrigger[];
   status: RunStatus;
   createdAt: string;
   startedAt?: string;
@@ -281,11 +267,6 @@ export interface TestRun {
   currentStepIndex?: number;
   nextStepAt?: string;
   steps?: FlowStep[];
-  demoTimeCompression?: number; // 1 = real time; >1 means waits are divided by this
-  // Delivery timing — when the journey was fired and how long until every
-  // expected persona had at least one email in the mailbox.
-  triggersFiredAt?: string;
-  deliveryElapsedMs?: number;
   // Set by the cancel endpoint; the runner checks it between awaits.
   cancelRequested?: boolean;
 }

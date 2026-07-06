@@ -10,27 +10,6 @@ import type { ConfigResponse, ExpectedFlow, PersonaConfig, PersonaStatus, TestRu
 const DEFAULT_FLOW_TEXT =
   'After a user submits the signup form they receive a confirmation email. If they click the "Confirm subscription" CTA within 1 minute, send them a welcome email. If they do not click, send a reminder. Both paths then receive a thank-you email.';
 
-type DemoCampaignKey = 'welcome';
-interface DemoCampaign {
-  label: string;
-  tagline: string;
-  prompt: string;
-  triggersConfigured: boolean;  // whether the server has SFMC triggers wired up for this preset
-}
-// Mirrors server/src/services/demoPresets.ts. The prompt below must stay in sync
-// with the server preset — the server uses its own copy when demoCampaign is set,
-// but the client shows this text in the read-only textarea so the user sees
-// exactly what the agent will read.
-const DEMO_CAMPAIGNS: Record<DemoCampaignKey, DemoCampaign> = {
-  welcome: {
-    label: 'Welcome Campaign — Engagement check with timer',
-    tagline: 'Two emails. Reminder fires only if the recipient does not click within 3 minutes. Triggers real SFMC entry events.',
-    prompt:
-      'Welcome Campaign has two emails. Two test contacts are used: one with the alias +welcomeclicker and one with the alias +welcomenonclicker. The first email is sent to both contacts and contains a "Finish setup" CTA. If the recipient with the +welcomeclicker alias clicks the "Finish setup" CTA, nothing else happens. If the recipient with the +welcomenonclicker alias does not click within 3 minutes, send a reminder email with a "Verify email address" CTA.',
-    triggersConfigured: true,
-  },
-};
-
 function personaStatusText(s: PersonaStatus): { label: string; cls: 'pass' | 'fail' | 'wait' } {
   switch (s) {
     case 'waiting':
@@ -56,7 +35,6 @@ export default function App() {
   const [config, setConfig] = useState<ConfigResponse | null>(null);
   const [flowText, setFlowText] = useState(DEFAULT_FLOW_TEXT);
   const [parsedFlow, setParsedFlow] = useState<ExpectedFlow | null>(null);
-  const [demoCompression, setDemoCompression] = useState<number>(60);
 
   const [run, setRun] = useState<TestRun | null>(null);
   const [report, setReport] = useState<TestRunReport | null>(null);
@@ -66,7 +44,6 @@ export default function App() {
   const [runsCount, setRunsCount] = useState<number>(0);
   const [runsRefreshKey, setRunsRefreshKey] = useState<number>(0);
   const [inboxUnread, setInboxUnread] = useState<number>(0);
-  const [demoCampaign, setDemoCampaign] = useState<DemoCampaignKey>('welcome');
 
   const pollRef = useRef<number | null>(null);
 
@@ -96,8 +73,7 @@ export default function App() {
     api.listRuns().then((rs) => setRunsCount(rs.length)).catch(() => {});
   }, [runsRefreshKey, run?.status]);
 
-  // Poll inbox unread count for the rail badge. Only needs to be alive on demo /
-  // jury walkthroughs, but it's cheap enough to run everywhere.
+  // Poll inbox unread count for the rail badge.
   useEffect(() => {
     let cancelled = false;
     async function tick() {
@@ -115,15 +91,6 @@ export default function App() {
       window.clearInterval(t);
     };
   }, []);
-
-  // When the user is in Demo view, keep flowText synced to the selected campaign
-  // so handleStart sends the right prompt to the server.
-  useEffect(() => {
-    if (view === 'demo') {
-      setFlowText(DEMO_CAMPAIGNS[demoCampaign].prompt);
-      setParsedFlow(null);
-    }
-  }, [view, demoCampaign]);
 
   // Persist / clear the active run id whenever the run changes status.
   useEffect(() => {
@@ -186,15 +153,17 @@ export default function App() {
       alert('Describe the campaign flow first.');
       return;
     }
+    if (!config?.gmailConfigured) {
+      alert('Gmail OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env first.');
+      return;
+    }
+    if (!config.gmailConnected) {
+      alert('Connect a Gmail account before starting a production test run.');
+      return;
+    }
     setBusy(true);
     try {
-      // In Demo view we send demoCampaign and let the server apply the preset
-      // (including SFMC triggers). Otherwise it's a free-form prompt.
-      const created = await api.createRun(
-        view === 'demo'
-          ? { demoCampaign, demoTimeCompression: config?.mode === 'demo' ? demoCompression : 1 }
-          : { expectedFlowText: flowText, demoTimeCompression: config?.mode === 'demo' ? demoCompression : 1 },
-      );
+      const created = await api.createRun({ expectedFlowText: flowText });
       setParsedFlow(created.expectedFlow);
       // Optimistically mark the run as running so the button flips immediately;
       // the polling effect will overwrite this with real server state.
@@ -325,13 +294,11 @@ export default function App() {
               <div className="work-head">
                 <div>
                   <div className="crumb">
-                    Workspace <b>/</b> {view === 'demo' ? 'Demo' : 'New Test'}
+                    Workspace <b>/</b> New Test
                   </div>
-                  <h1>{inferredName || (view === 'demo' ? 'Run a demo scenario' : 'New Campaign Flow Test')}</h1>
+                  <h1>{inferredName || 'New Campaign Flow Test'}</h1>
                   <p className="sub">
-                    {view === 'demo'
-                      ? 'Pick a pre-configured campaign. The agent will run the same flow it would for any custom prompt — inferring personas, watching the inbox, and producing the QA report.'
-                      : 'Describe the journey in your own words. The agent infers personas, builds a step plan with timers, watches the seed inbox at each checkpoint, then writes a report tailored to the flow you described.'}
+                    Describe the journey in your own words. The agent infers personas, builds a step plan with timers, watches the connected Gmail account at each checkpoint, then writes a report tailored to the flow you described.
                   </p>
                 </div>
                 {headBadge}
@@ -339,51 +306,18 @@ export default function App() {
 
               <section className="card">
                 <div className="card-head">
-                  <h2>{view === 'demo' ? 'Pick a demo campaign' : 'Describe the campaign flow'}</h2>
+                  <h2>Describe the campaign flow</h2>
                   <span className="hint">
-                    {view === 'demo'
-                      ? 'Choose one of two pre-built flows. The prompt below is what the agent will read — exactly as if you typed it yourself.'
-                      : 'Plain language. Include timers like "wait 10 minutes". The agent parses everything from this prompt.'}
+                    Plain language. Include timers like "wait 10 minutes". The agent parses everything from this prompt.
                   </span>
                 </div>
                 <div className="flow-wrap">
-                  {view === 'demo' && (
-                    <div className="demo-picker">
-                      <label htmlFor="demo-campaign">Campaign</label>
-                      <select
-                        id="demo-campaign"
-                        value={demoCampaign}
-                        onChange={(e) => {
-                          const key = e.target.value as DemoCampaignKey;
-                          setDemoCampaign(key);
-                          setFlowText(DEMO_CAMPAIGNS[key].prompt);
-                          setParsedFlow(null);
-                        }}
-                      >
-                        {(Object.keys(DEMO_CAMPAIGNS) as DemoCampaignKey[]).map((k) => (
-                          <option key={k} value={k}>{DEMO_CAMPAIGNS[k].label}</option>
-                        ))}
-                      </select>
-                      <div className="demo-tagline">{DEMO_CAMPAIGNS[demoCampaign].tagline}</div>
-                      {DEMO_CAMPAIGNS[demoCampaign].triggersConfigured && config && !config.sfmcConfigured && (
-                        <div className="demo-warning">
-                          ⚠️ SFMC isn't configured. Set <code>SFMC_SUBDOMAIN</code>, <code>SFMC_CLIENT_ID</code>, <code>SFMC_CLIENT_SECRET</code>, and <code>SFMC_ACCOUNT_ID</code> in <code>.env</code> so the demo can fire real entry events. The run will still start but no emails will arrive.
-                        </div>
-                      )}
-                      {!DEMO_CAMPAIGNS[demoCampaign].triggersConfigured && (
-                        <div className="demo-warning">
-                          ⚠️ This preset's SFMC triggers haven't been configured yet (no ContactKey / EventDefinitionKey). The agent will parse the prompt and start watching, but no entry events will fire.
-                        </div>
-                      )}
-                    </div>
-                  )}
                   <textarea
                     className="flow-area"
                     spellCheck={false}
-                    value={view === 'demo' ? DEMO_CAMPAIGNS[demoCampaign].prompt : flowText}
+                    value={flowText}
                     onChange={onFlowTextChange}
                     placeholder="e.g. After a user fills the signup form they get a welcome email. If they click the CTA within 5 minutes, send Email 2A; otherwise send Reminder 2B. Both branches then get a thank-you email after 10 minutes."
-                    readOnly={view === 'demo'}
                   />
                   <div className="flow-foot">
                     <div className="parsed">
@@ -402,21 +336,6 @@ export default function App() {
                     <span className="summary-line">{flowLine}</span>
                   </div>
                   <div className="flow-actions">
-                    {config?.mode === 'demo' && (
-                      <span className="hint">
-                        Demo time compression:{' '}
-                        <select
-                          value={demoCompression}
-                          onChange={(e) => setDemoCompression(Number(e.target.value))}
-                          style={{ background: 'transparent', border: '1px solid var(--line)', borderRadius: 6, padding: '2px 6px', color: 'var(--ink)', font: 'inherit' }}
-                        >
-                          <option value={1}>real time</option>
-                          <option value={6}>6×</option>
-                          <option value={60}>60×</option>
-                          <option value={600}>600×</option>
-                        </select>
-                      </span>
-                    )}
                     <button className="btn btn-primary" onClick={handleStart} disabled={busy || run?.status === 'running'}>
                       {run?.status === 'running' ? (
                         <svg width="13" height="13" viewBox="0 0 14 14">
@@ -528,13 +447,17 @@ export default function App() {
         gmailConnected={!!config?.gmailConnected}
         onRetest={async () => {
           if (!report) return;
+          if (!config?.gmailConnected) {
+            alert('Connect a Gmail account before re-testing.');
+            return;
+          }
           setModalOpen(false);
           // Re-use the failed run's prompt to launch a fresh run.
           try {
             setBusy(true);
+            const original = await api.getRun(report.testRunId);
             const created = await api.createRun({
-              expectedFlowText: (await api.getRun(report.testRunId)).expectedFlowText,
-              demoTimeCompression: config?.mode === 'demo' ? demoCompression : 1,
+              expectedFlowText: original.expectedFlowText,
             });
             setParsedFlow(created.expectedFlow);
             setFlowText(created.expectedFlowText);
